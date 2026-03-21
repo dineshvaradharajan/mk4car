@@ -773,6 +773,10 @@ const CARS = [
       style: 'f1', scale: 1.1, bodyH: 0, spoiler: 'none' },
     { name: 'Ghost One', desc: 'Ultimate hypercar!', speed: 100, accel: 95, handling: 65, unlock: 500,
       style: 'koenigsegg', scale: 1.1, bodyH: -0.05, spoiler: 'wing' },
+    { name: 'Supra MK4', desc: 'Legendary JDM icon!', speed: 100, accel: 100, handling: 100, unlock: 600,
+      style: 'supra4', scale: 1.05, bodyH: 0.05, spoiler: 'big' },
+    { name: 'Supra MK5', desc: 'Modern JDM beast!', speed: 100, accel: 100, handling: 100, unlock: 700,
+      style: 'supra5', scale: 1.05, bodyH: 0, spoiler: 'wing' },
 ];
 
 const COLORS = ['#ff3333','#3366ff','#33cc33','#ffcc00','#ff66cc','#00cccc','#ff8800','#aa33ff'];
@@ -1983,6 +1987,237 @@ function buildCarMesh(color, carDef) {
             ex.position.set(sx, wR + 0.25, -L/2 - 0.25);
             group.add(ex);
         }
+
+    } else if (style === 'supra4') {
+        // ── Toyota Supra MK4 (A80): iconic rounded body, big rear wing ──
+        const bW = W * 1.02, bH = H * 1.05, bL = L * 1.02;
+
+        // Main body - smooth, rounded
+        const bodyGeo = new THREE.BoxGeometry(bW, bH, bL);
+        const body = new THREE.Mesh(bodyGeo, mat);
+        body.position.set(0, wR + bH/2, 0);
+        body.castShadow = true;
+        group.add(body);
+
+        // Long curved hood
+        const hoodGeo = new THREE.BoxGeometry(bW * 0.92, 0.1, bL * 0.38);
+        const hood = new THREE.Mesh(hoodGeo, mat);
+        hood.position.set(0, wR + bH + 0.01, bL * 0.18);
+        hood.rotation.x = 0.06;
+        group.add(hood);
+
+        // Rounded front nose
+        const noseGeo = new THREE.SphereGeometry(bW * 0.48, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+        const nose = new THREE.Mesh(noseGeo, mat);
+        nose.rotation.x = -Math.PI / 2;
+        nose.scale.set(1, 0.45, 0.65);
+        nose.position.set(0, wR + bH * 0.3, bL/2 + 0.05);
+        group.add(nose);
+
+        // Front bumper
+        const fbGeo = new THREE.BoxGeometry(bW * 1.02, bH * 0.4, 0.25);
+        const fb = new THREE.Mesh(fbGeo, darkMat);
+        fb.position.set(0, wR + bH * 0.2, bL/2 + 0.15);
+        group.add(fb);
+
+        // Windshield (curved, MK4 style)
+        const wsGeo = new THREE.BoxGeometry(bW * 0.82, 0.05, bH * 2.4);
+        const ws = new THREE.Mesh(wsGeo, glassMat);
+        ws.position.set(0, wR + bH + 0.38, bL * 0.03);
+        ws.rotation.x = -0.82;
+        group.add(ws);
+
+        // Bubble roof (MK4 signature rounded top)
+        const roofGeo = new THREE.BoxGeometry(bW * 0.74, 0.12, bL * 0.22);
+        const roof = new THREE.Mesh(roofGeo, mat);
+        roof.position.set(0, wR + bH + 0.58, -bL * 0.04);
+        group.add(roof);
+
+        // Rear window (big, sloped - targa style)
+        const rwGeo = new THREE.BoxGeometry(bW * 0.68, 0.05, bH * 1.8);
+        const rw = new THREE.Mesh(rwGeo, glassMat);
+        rw.position.set(0, wR + bH + 0.35, -bL * 0.18);
+        rw.rotation.x = 0.6;
+        group.add(rw);
+
+        // Side windows
+        for (let sx of [-1, 1]) {
+            const swGeo = new THREE.BoxGeometry(0.04, bH * 0.45, bL * 0.18);
+            const sw = new THREE.Mesh(swGeo, glassMat);
+            sw.position.set(sx * bW/2, wR + bH + 0.15, -bL * 0.02);
+            group.add(sw);
+        }
+
+        // Wide rear fenders (MK4 signature hips)
+        for (let sx of [-1, 1]) {
+            const fenderGeo = new THREE.BoxGeometry(0.2, bH * 0.85, bL * 0.28);
+            const fender = new THREE.Mesh(fenderGeo, mat);
+            fender.position.set(sx * (bW/2 + 0.1), wR + bH * 0.45, -bL * 0.2);
+            group.add(fender);
+        }
+
+        // Massive rear wing (iconic MK4 wing)
+        const wingGeo = new THREE.BoxGeometry(bW * 1.0, 0.06, 0.4);
+        const wing = new THREE.Mesh(wingGeo, mat);
+        wing.position.set(0, wR + bH + 0.55, -bL/2 + 0.15);
+        group.add(wing);
+        // Wing stands
+        for (let sx of [-1, 1]) {
+            const standGeo = new THREE.BoxGeometry(0.08, 0.4, 0.1);
+            const stand = new THREE.Mesh(standGeo, chromeMat);
+            stand.position.set(sx * bW * 0.35, wR + bH + 0.35, -bL/2 + 0.18);
+            group.add(stand);
+        }
+
+        // Rear bumper with diffuser
+        const rbGeo = new THREE.BoxGeometry(bW * 0.95, bH * 0.35, 0.2);
+        const rb = new THREE.Mesh(rbGeo, darkMat);
+        rb.position.set(0, wR + bH * 0.18, -bL/2 - 0.1);
+        group.add(rb);
+
+        // Round taillights (MK4 signature)
+        for (let sx of [-1, 1]) {
+            const rtGeo = new THREE.SphereGeometry(0.15, 8, 8);
+            const rt = new THREE.Mesh(rtGeo, tlMat);
+            rt.position.set(sx * bW * 0.35, wR + bH * 0.55, -bL/2 - 0.02);
+            group.add(rt);
+        }
+
+        // Dual exhaust (big bore)
+        for (let sx of [-0.35, 0.35]) {
+            const exGeo = new THREE.CylinderGeometry(0.1, 0.12, 0.2, 10);
+            const ex = new THREE.Mesh(exGeo, chromeMat);
+            ex.rotation.x = Math.PI / 2;
+            ex.position.set(sx, wR + 0.2, -bL/2 - 0.2);
+            group.add(ex);
+        }
+
+    } else if (style === 'supra5') {
+        // ── Toyota Supra MK5 (A90): sharp modern design, flowing lines ──
+        const bW = W * 1.0, bH = H * 0.95, bL = L * 1.0;
+
+        // Main body - sleek, low
+        const bodyGeo = new THREE.BoxGeometry(bW, bH, bL);
+        const body = new THREE.Mesh(bodyGeo, mat);
+        body.position.set(0, wR + bH/2, 0);
+        body.castShadow = true;
+        group.add(body);
+
+        // Sharp front nose (MK5 aggressive face)
+        const noseGeo = new THREE.BoxGeometry(bW * 0.85, bH * 0.55, bL * 0.2);
+        const nose = new THREE.Mesh(noseGeo, mat);
+        nose.position.set(0, wR + bH * 0.28, bL * 0.4);
+        nose.rotation.x = 0.12;
+        group.add(nose);
+
+        // Front splitter
+        const splitGeo = new THREE.BoxGeometry(bW * 1.05, 0.04, 0.35);
+        const split = new THREE.Mesh(splitGeo, darkMat);
+        split.position.set(0, wR * 0.3, bL/2 + 0.1);
+        group.add(split);
+
+        // Large front grille (MK5 signature)
+        const grilleGeo = new THREE.BoxGeometry(bW * 0.65, bH * 0.35, 0.08);
+        const grille = new THREE.Mesh(grilleGeo, darkMat);
+        grille.position.set(0, wR + bH * 0.25, bL/2 + 0.18);
+        group.add(grille);
+
+        // Hood with power dome
+        const hoodGeo = new THREE.BoxGeometry(bW * 0.88, 0.1, bL * 0.32);
+        const hood = new THREE.Mesh(hoodGeo, mat);
+        hood.position.set(0, wR + bH + 0.02, bL * 0.18);
+        group.add(hood);
+        // Hood dome
+        const domeGeo = new THREE.BoxGeometry(bW * 0.3, 0.08, bL * 0.2);
+        const dome = new THREE.Mesh(domeGeo, mat);
+        dome.position.set(0, wR + bH + 0.08, bL * 0.2);
+        group.add(dome);
+
+        // Windshield (sharp, raked)
+        const wsGeo = new THREE.BoxGeometry(bW * 0.8, 0.05, bH * 2.5);
+        const ws = new THREE.Mesh(wsGeo, glassMat);
+        ws.position.set(0, wR + bH + 0.38, bL * 0.02);
+        ws.rotation.x = -0.95;
+        group.add(ws);
+
+        // Double-bubble roof (MK5 signature)
+        const roofGeo = new THREE.BoxGeometry(bW * 0.7, 0.1, bL * 0.2);
+        const roof = new THREE.Mesh(roofGeo, mat);
+        roof.position.set(0, wR + bH + 0.55, -bL * 0.05);
+        group.add(roof);
+        // Bubble dents on roof
+        for (let sx of [-1, 1]) {
+            const bubGeo = new THREE.BoxGeometry(bW * 0.22, 0.06, bL * 0.15);
+            const bub = new THREE.Mesh(bubGeo, mat);
+            bub.position.set(sx * bW * 0.16, wR + bH + 0.58, -bL * 0.05);
+            group.add(bub);
+        }
+
+        // Rear window
+        const rwGeo = new THREE.BoxGeometry(bW * 0.65, 0.05, bH * 1.6);
+        const rw = new THREE.Mesh(rwGeo, glassMat);
+        rw.position.set(0, wR + bH + 0.32, -bL * 0.18);
+        rw.rotation.x = 0.7;
+        group.add(rw);
+
+        // Side air vents (behind front wheels)
+        for (let sx of [-1, 1]) {
+            for (let v = 0; v < 3; v++) {
+                const ventGeo = new THREE.BoxGeometry(0.04, 0.05, 0.2);
+                const vent = new THREE.Mesh(ventGeo, darkMat);
+                vent.position.set(sx * (bW/2 + 0.02), wR + bH * 0.65 + v * 0.07, bL * 0.08);
+                group.add(vent);
+            }
+        }
+
+        // Sculpted side skirts
+        for (let sx of [-1, 1]) {
+            const skirtGeo = new THREE.BoxGeometry(0.08, bH * 0.3, bL * 0.6);
+            const skirt = new THREE.Mesh(skirtGeo, darkMat);
+            skirt.position.set(sx * (bW/2 + 0.03), wR + bH * 0.15, 0);
+            group.add(skirt);
+        }
+
+        // Rear ducktail spoiler (GR Supra style)
+        const spoilerGeo = new THREE.BoxGeometry(bW * 0.85, 0.05, 0.3);
+        const spoiler = new THREE.Mesh(spoilerGeo, mat);
+        spoiler.position.set(0, wR + bH + 0.2, -bL/2 + 0.1);
+        group.add(spoiler);
+        // Wing supports
+        for (let sx of [-1, 1]) {
+            const supGeo = new THREE.BoxGeometry(0.06, 0.3, 0.06);
+            const sup = new THREE.Mesh(supGeo, chromeMat);
+            sup.position.set(sx * bW * 0.35, wR + bH + 0.08, -bL/2 + 0.12);
+            group.add(sup);
+        }
+
+        // Rear diffuser
+        const diffGeo = new THREE.BoxGeometry(bW * 0.9, 0.15, 0.35);
+        const diff = new THREE.Mesh(diffGeo, darkMat);
+        diff.position.set(0, wR + 0.08, -bL/2 - 0.1);
+        group.add(diff);
+
+        // Taillights (MK5 wraparound style)
+        for (let sx of [-1, 1]) {
+            const tlGeo2 = new THREE.BoxGeometry(0.35, 0.08, 0.08);
+            const tl2 = new THREE.Mesh(tlGeo2, tlMat);
+            tl2.position.set(sx * bW * 0.32, wR + bH * 0.6, -bL/2 - 0.02);
+            group.add(tl2);
+        }
+        // Light bar connecting tails
+        const lbarGeo = new THREE.BoxGeometry(bW * 0.5, 0.03, 0.05);
+        const lbar = new THREE.Mesh(lbarGeo, tlMat);
+        lbar.position.set(0, wR + bH * 0.6, -bL/2 - 0.02);
+        group.add(lbar);
+
+        // Dual exhaust
+        for (let sx of [-0.3, 0.3]) {
+            const exGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.2, 10);
+            const ex = new THREE.Mesh(exGeo, chromeMat);
+            ex.rotation.x = Math.PI / 2;
+            ex.position.set(sx, wR + 0.2, -bL/2 - 0.2);
+            group.add(ex);
+        }
     }
 
     // ── Headlights (all styles except F1) ──
@@ -3128,33 +3363,33 @@ function updatePlayer(dt) {
     const displaySpeed = Math.sqrt(carVelX * carVelX + carVelZ * carVelZ) * 3.6; // units to km/h
     if (displaySpeed > topSpeed) topSpeed = displaySpeed;
 
-    // ── Suspension physics ──
-    // Spring-damper system for body bounce
-    const stiffness = 60;   // spring stiffness
-    const damping = 8;      // damper
-    const targetY = 0;      // resting position
+    // ── Suspension physics (skip for F1 cars - stiff chassis) ──
+    const isF1Car = car.style === 'f1';
+    if (!isF1Car) {
+        const stiffness = 60;
+        const damping = 8;
+        const targetY = 0;
 
-    // Bumps from speed + track roughness
-    const bumpForce = Math.sin(raceTime * 15 + carX * 0.5) * absSpeed * 0.003
-                    + Math.sin(raceTime * 23 + carZ * 0.3) * absSpeed * 0.002;
+        const bumpForce = Math.sin(raceTime * 15 + carX * 0.5) * absSpeed * 0.003
+                        + Math.sin(raceTime * 23 + carZ * 0.3) * absSpeed * 0.002;
 
-    // Acceleration/braking pitch force
-    let accelForce2 = 0;
-    if (keys['w'] || keys['arrowup']) accelForce2 = -0.02 * Math.min(absSpeed / 30, 1);
-    else if (keys['s'] || keys['arrowdown']) accelForce2 = 0.04 * Math.min(absSpeed / 10, 1);
+        let accelForce2 = 0;
+        if (keys['w'] || keys['arrowup']) accelForce2 = -0.02 * Math.min(absSpeed / 30, 1);
+        else if (keys['s'] || keys['arrowdown']) accelForce2 = 0.04 * Math.min(absSpeed / 10, 1);
 
-    // Suspension spring
-    suspVel += (-stiffness * (suspBounce - targetY) - damping * suspVel + bumpForce * 80) * dt;
-    suspBounce += suspVel * dt;
-    suspBounce = Math.max(-0.15, Math.min(0.15, suspBounce));
+        suspVel += (-stiffness * (suspBounce - targetY) - damping * suspVel + bumpForce * 80) * dt;
+        suspBounce += suspVel * dt;
+        suspBounce = Math.max(-0.15, Math.min(0.15, suspBounce));
 
-    // Smooth pitch (nose dive on brake, squat on accel)
-    const targetPitch = accelForce2 + bumpForce * 0.5;
-    suspPitch += (targetPitch - suspPitch) * Math.min(1, 8 * dt);
+        const targetPitch = accelForce2 + bumpForce * 0.5;
+        suspPitch += (targetPitch - suspPitch) * Math.min(1, 8 * dt);
 
-    // Smooth roll (lean into turns)
-    const targetRoll = -carSteerAngle * 0.25 * Math.min(absSpeed / 20, 1);
-    suspRoll += (targetRoll - suspRoll) * Math.min(1, 6 * dt);
+        const targetRoll = -carSteerAngle * 0.25 * Math.min(absSpeed / 20, 1);
+        suspRoll += (targetRoll - suspRoll) * Math.min(1, 6 * dt);
+    } else {
+        // F1: rigid chassis, no suspension bounce
+        suspBounce = 0; suspVel = 0; suspPitch = 0; suspRoll = 0;
+    }
 
     // ── Update car mesh ──
     playerCar.position.set(carX, carY + suspBounce, carZ);
@@ -3531,42 +3766,88 @@ const SoundEngine = {
     engineOsc: null,
     engineGain: null,
     initialized: false,
+    isF1: false,
 
     init() {
         if (this.initialized) return;
+        this.isF1 = CARS[GameState.selectedCar].style === 'f1';
         try {
             this.ctx = new (window.AudioContext || window.webkitAudioContext)();
 
-            // Engine sound: sawtooth oscillator with filter
-            this.engineOsc = this.ctx.createOscillator();
-            this.engineOsc.type = 'sawtooth';
-            this.engineOsc.frequency.value = 60;
+            if (this.isF1) {
+                // F1 ENGINE: high-pitched V6 turbo hybrid whine
+                // Primary: high-rev sine wave (screaming V6)
+                this.engineOsc = this.ctx.createOscillator();
+                this.engineOsc.type = 'sawtooth';
+                this.engineOsc.frequency.value = 200;
 
-            const engineFilter = this.ctx.createBiquadFilter();
-            engineFilter.type = 'lowpass';
-            engineFilter.frequency.value = 300;
-            engineFilter.Q.value = 5;
-            this.engineFilter = engineFilter;
+                const engineFilter = this.ctx.createBiquadFilter();
+                engineFilter.type = 'bandpass';
+                engineFilter.frequency.value = 800;
+                engineFilter.Q.value = 2;
+                this.engineFilter = engineFilter;
 
-            this.engineGain = this.ctx.createGain();
-            this.engineGain.gain.value = 0;
+                this.engineGain = this.ctx.createGain();
+                this.engineGain.gain.value = 0;
 
-            // Second harmonic for richer sound
-            this.engineOsc2 = this.ctx.createOscillator();
-            this.engineOsc2.type = 'square';
-            this.engineOsc2.frequency.value = 120;
-            this.engineGain2 = this.ctx.createGain();
-            this.engineGain2.gain.value = 0;
+                // 2nd harmonic: high whine
+                this.engineOsc2 = this.ctx.createOscillator();
+                this.engineOsc2.type = 'sine';
+                this.engineOsc2.frequency.value = 400;
+                this.engineGain2 = this.ctx.createGain();
+                this.engineGain2.gain.value = 0;
 
-            this.engineOsc.connect(engineFilter);
-            engineFilter.connect(this.engineGain);
-            this.engineGain.connect(this.ctx.destination);
+                // 3rd harmonic: turbo whistle
+                this.engineOsc3 = this.ctx.createOscillator();
+                this.engineOsc3.type = 'sine';
+                this.engineOsc3.frequency.value = 1200;
+                this.engineGain3 = this.ctx.createGain();
+                this.engineGain3.gain.value = 0;
 
-            this.engineOsc2.connect(this.engineGain2);
-            this.engineGain2.connect(this.ctx.destination);
+                this.engineOsc.connect(engineFilter);
+                engineFilter.connect(this.engineGain);
+                this.engineGain.connect(this.ctx.destination);
 
-            this.engineOsc.start();
-            this.engineOsc2.start();
+                this.engineOsc2.connect(this.engineGain2);
+                this.engineGain2.connect(this.ctx.destination);
+
+                this.engineOsc3.connect(this.engineGain3);
+                this.engineGain3.connect(this.ctx.destination);
+
+                this.engineOsc.start();
+                this.engineOsc2.start();
+                this.engineOsc3.start();
+            } else {
+                // ROAD CAR ENGINE: deep rumble
+                this.engineOsc = this.ctx.createOscillator();
+                this.engineOsc.type = 'sawtooth';
+                this.engineOsc.frequency.value = 60;
+
+                const engineFilter = this.ctx.createBiquadFilter();
+                engineFilter.type = 'lowpass';
+                engineFilter.frequency.value = 300;
+                engineFilter.Q.value = 5;
+                this.engineFilter = engineFilter;
+
+                this.engineGain = this.ctx.createGain();
+                this.engineGain.gain.value = 0;
+
+                this.engineOsc2 = this.ctx.createOscillator();
+                this.engineOsc2.type = 'square';
+                this.engineOsc2.frequency.value = 120;
+                this.engineGain2 = this.ctx.createGain();
+                this.engineGain2.gain.value = 0;
+
+                this.engineOsc.connect(engineFilter);
+                engineFilter.connect(this.engineGain);
+                this.engineGain.connect(this.ctx.destination);
+
+                this.engineOsc2.connect(this.engineGain2);
+                this.engineGain2.connect(this.ctx.destination);
+
+                this.engineOsc.start();
+                this.engineOsc2.start();
+            }
 
             this.initialized = true;
         } catch(e) { console.log('Audio not available'); }
@@ -3575,15 +3856,29 @@ const SoundEngine = {
     updateEngine(speed, maxSpeed) {
         if (!this.initialized) return;
         const ratio = Math.abs(speed) / maxSpeed;
-        // Frequency ramps up with speed (60Hz idle to 350Hz max)
-        const freq = 60 + ratio * 290;
-        this.engineOsc.frequency.linearRampToValueAtTime(freq, this.ctx.currentTime + 0.05);
-        this.engineOsc2.frequency.linearRampToValueAtTime(freq * 2, this.ctx.currentTime + 0.05);
-        this.engineFilter.frequency.linearRampToValueAtTime(200 + ratio * 600, this.ctx.currentTime + 0.05);
-        // Volume
-        const vol = 0.03 + ratio * 0.08;
-        this.engineGain.gain.linearRampToValueAtTime(vol, this.ctx.currentTime + 0.05);
-        this.engineGain2.gain.linearRampToValueAtTime(vol * 0.3, this.ctx.currentTime + 0.05);
+        const t = this.ctx.currentTime + 0.05;
+
+        if (this.isF1) {
+            // F1: high-pitched whine 200Hz idle → 900Hz at max, with harmonics
+            const freq = 200 + ratio * 700;
+            this.engineOsc.frequency.linearRampToValueAtTime(freq, t);
+            this.engineOsc2.frequency.linearRampToValueAtTime(freq * 1.5, t);
+            this.engineOsc3.frequency.linearRampToValueAtTime(freq * 3, t); // turbo whistle
+            this.engineFilter.frequency.linearRampToValueAtTime(400 + ratio * 1500, t);
+            const vol = 0.04 + ratio * 0.1;
+            this.engineGain.gain.linearRampToValueAtTime(vol, t);
+            this.engineGain2.gain.linearRampToValueAtTime(vol * 0.5, t);
+            this.engineGain3.gain.linearRampToValueAtTime(vol * 0.15, t); // subtle turbo
+        } else {
+            // Road car: deep rumble 60Hz idle → 350Hz max
+            const freq = 60 + ratio * 290;
+            this.engineOsc.frequency.linearRampToValueAtTime(freq, t);
+            this.engineOsc2.frequency.linearRampToValueAtTime(freq * 2, t);
+            this.engineFilter.frequency.linearRampToValueAtTime(200 + ratio * 600, t);
+            const vol = 0.03 + ratio * 0.08;
+            this.engineGain.gain.linearRampToValueAtTime(vol, t);
+            this.engineGain2.gain.linearRampToValueAtTime(vol * 0.3, t);
+        }
     },
 
     playDrift() {
@@ -3622,6 +3917,8 @@ const SoundEngine = {
         if (!this.initialized) return;
         this.engineGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.1);
         this.engineGain2.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.1);
+        if (this.engineGain3) this.engineGain3.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.1);
+        this.initialized = false;
     }
 };
 

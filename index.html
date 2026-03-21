@@ -429,14 +429,120 @@
             user-select: none;
         }
         .mobile-btn:active { background: rgba(255,107,53,0.4); }
+
+        /* Login Screen */
+        .login-box {
+            background: rgba(20,20,40,0.95);
+            border: 1px solid rgba(255,107,53,0.3);
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .login-box h2 {
+            color: #ff6b35;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .login-box p {
+            color: #888;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+        .login-input {
+            width: 100%;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 10px;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .login-input:focus {
+            border-color: #ff6b35;
+        }
+        .login-input::placeholder { color: #666; }
+        .login-error {
+            color: #ff4444;
+            font-size: 13px;
+            margin-bottom: 10px;
+            min-height: 18px;
+        }
+        .login-toggle {
+            color: #888;
+            font-size: 13px;
+            margin-top: 16px;
+        }
+        .login-toggle a {
+            color: #ff6b35;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        .login-toggle a:hover { color: #ff8855; }
+        .user-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,107,53,0.15);
+            border: 1px solid rgba(255,107,53,0.3);
+            border-radius: 20px;
+            padding: 4px 14px 4px 10px;
+            font-size: 13px;
+            color: #ff6b35;
+            margin-bottom: 12px;
+        }
+        .user-badge .avatar {
+            width: 22px; height: 22px;
+            border-radius: 50%;
+            background: #ff6b35;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .logout-btn {
+            background: none;
+            border: none;
+            color: #666;
+            font-size: 12px;
+            cursor: pointer;
+            margin-left: 6px;
+        }
+        .logout-btn:hover { color: #ff4444; }
     </style>
 </head>
 <body>
 
+<!-- Login Screen -->
+<div id="login-screen" class="screen active">
+    <div class="login-box">
+        <h2>MK4 RACER</h2>
+        <p id="login-subtitle">Sign in to race</p>
+        <input type="text" class="login-input" id="login-username" placeholder="Username" maxlength="20" autocomplete="off">
+        <input type="password" class="login-input" id="login-password" placeholder="Password" maxlength="30">
+        <div class="login-error" id="login-error"></div>
+        <button class="menu-btn primary" id="login-btn" onclick="handleLogin()">Sign In</button>
+        <div class="login-toggle" id="login-toggle">
+            New player? <a onclick="toggleLoginMode()">Create Account</a>
+        </div>
+    </div>
+</div>
+
 <!-- Main Menu -->
-<div id="main-menu" class="screen active">
+<div id="main-menu" class="screen">
     <div class="game-title">MK4 RACER</div>
     <div class="game-subtitle">3D Racing Championship</div>
+    <div class="user-badge" id="user-badge">
+        <div class="avatar" id="user-avatar">?</div>
+        <span id="user-display-name">Player</span>
+        <button class="logout-btn" onclick="logout()">[logout]</button>
+    </div>
     <div style="margin-bottom: 20px;">
         <div class="progress-container">
             <div style="color:#aaa; font-size:13px; margin-bottom:4px;">Level Progress: <span id="player-level">Beginner</span></div>
@@ -705,14 +811,127 @@ const DIFFICULTIES = [
     { name: 'Extreme', badge: 'level-extreme', aiSpeed: 1.2, unlock: 300 },
 ];
 
-// Load saved progress
-try {
-    const saved = JSON.parse(localStorage.getItem('mk4racer'));
-    if (saved) { GameState.xp = saved.xp || 0; GameState.wins = saved.wins || 0; }
-} catch(e) {}
+// ============================================================
+//  LOGIN SYSTEM
+// ============================================================
+let currentUser = null;
+let isSignupMode = false;
 
+function getUsers() {
+    try { return JSON.parse(localStorage.getItem('mk4racer_users')) || {}; } catch(e) { return {}; }
+}
+
+function saveUsers(users) {
+    localStorage.setItem('mk4racer_users', JSON.stringify(users));
+}
+
+function simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return hash.toString(36);
+}
+
+function handleLogin() {
+    const username = document.getElementById('login-username').value.trim().toLowerCase();
+    const password = document.getElementById('login-password').value;
+    const errorEl = document.getElementById('login-error');
+    errorEl.textContent = '';
+
+    if (!username || username.length < 2) { errorEl.textContent = 'Username must be at least 2 characters'; return; }
+    if (!password || password.length < 3) { errorEl.textContent = 'Password must be at least 3 characters'; return; }
+    if (!/^[a-z0-9_]+$/.test(username)) { errorEl.textContent = 'Username: letters, numbers, underscore only'; return; }
+
+    const users = getUsers();
+    const passHash = simpleHash(password);
+
+    if (isSignupMode) {
+        if (users[username]) { errorEl.textContent = 'Username already taken!'; return; }
+        users[username] = { passHash, xp: 0, wins: 0, created: Date.now() };
+        saveUsers(users);
+        loginAs(username, users[username]);
+    } else {
+        if (!users[username]) { errorEl.textContent = 'User not found. Create an account!'; return; }
+        if (users[username].passHash !== passHash) { errorEl.textContent = 'Wrong password!'; return; }
+        loginAs(username, users[username]);
+    }
+}
+
+function loginAs(username, data) {
+    currentUser = username;
+    GameState.xp = data.xp || 0;
+    GameState.wins = data.wins || 0;
+    localStorage.setItem('mk4racer_lastuser', username);
+    updateUserBadge();
+    showScreen('main-menu');
+}
+
+function updateUserBadge() {
+    if (!currentUser) return;
+    document.getElementById('user-avatar').textContent = currentUser[0].toUpperCase();
+    document.getElementById('user-display-name').textContent = currentUser;
+}
+
+function logout() {
+    currentUser = null;
+    localStorage.removeItem('mk4racer_lastuser');
+    GameState.xp = 0;
+    GameState.wins = 0;
+    document.getElementById('login-username').value = '';
+    document.getElementById('login-password').value = '';
+    document.getElementById('login-error').textContent = '';
+    isSignupMode = false;
+    updateLoginUI();
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('login-screen').classList.add('active');
+}
+
+function toggleLoginMode() {
+    isSignupMode = !isSignupMode;
+    updateLoginUI();
+}
+
+function updateLoginUI() {
+    document.getElementById('login-subtitle').textContent = isSignupMode ? 'Create your racer account' : 'Sign in to race';
+    document.getElementById('login-btn').textContent = isSignupMode ? 'Create Account' : 'Sign In';
+    document.getElementById('login-toggle').innerHTML = isSignupMode
+        ? 'Already have an account? <a onclick="toggleLoginMode()">Sign In</a>'
+        : 'New player? <a onclick="toggleLoginMode()">Create Account</a>';
+    document.getElementById('login-error').textContent = '';
+}
+
+// Auto-login last user
+(function autoLogin() {
+    const lastUser = localStorage.getItem('mk4racer_lastuser');
+    if (lastUser) {
+        const users = getUsers();
+        if (users[lastUser]) {
+            loginAs(lastUser, users[lastUser]);
+            return;
+        }
+    }
+})();
+
+// Allow Enter key to submit login
+document.addEventListener('DOMContentLoaded', () => {
+    ['login-username', 'login-password'].forEach(id => {
+        document.getElementById(id).addEventListener('keydown', e => {
+            if (e.key === 'Enter') handleLogin();
+        });
+    });
+});
+
+// Save progress for current user
 function saveProgress() {
-    localStorage.setItem('mk4racer', JSON.stringify({ xp: GameState.xp, wins: GameState.wins }));
+    if (!currentUser) return;
+    const users = getUsers();
+    if (users[currentUser]) {
+        users[currentUser].xp = GameState.xp;
+        users[currentUser].wins = GameState.wins;
+        saveUsers(users);
+    }
 }
 
 function getLevel() {

@@ -225,18 +225,6 @@ function clearModelCache() {
 function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
     const parsedColor = BABYLON.Color3.FromHexString(color);
 
-    // For models that need orientation fix, use an intermediate node
-    let meshParent = parentNode;
-    if (modelInfo.fixRotation) {
-        meshParent = new BABYLON.TransformNode(uid('modelFix'), scene);
-        meshParent.parent = parentNode;
-        // Ferrari model: correct orientation using quaternion
-        // The model stands vertically — rotate 90° around Z to lay flat, then adjust facing
-        const qZ = BABYLON.Quaternion.RotationAxis(new BABYLON.Vector3(0, 0, 1), Math.PI / 2);
-        const qY = BABYLON.Quaternion.RotationAxis(new BABYLON.Vector3(0, 1, 0), Math.PI);
-        meshParent.rotationQuaternion = qY.multiply(qZ);
-    }
-
     originalMeshes.forEach((mesh, idx) => {
         if (mesh.getClassName() === 'TransformNode' && idx === 0) return;
 
@@ -248,7 +236,32 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
         }
 
         if (clone) {
-            clone.parent = meshParent;
+            clone.parent = parentNode;
+
+            // Ferrari model: bake rotation fix into each mesh
+            if (modelInfo.fixRotation) {
+                // Try all 6 possible 90° rotations to find correct one
+                // The model stands as a pillar — need to rotate around local X by -90°
+                const fixMatrix = BABYLON.Matrix.RotationX(-Math.PI / 2);
+                const positions = clone.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+                const normals = clone.getVerticesData(BABYLON.VertexBuffer.NormalKind);
+                if (positions) {
+                    for (let vi = 0; vi < positions.length; vi += 3) {
+                        const v = BABYLON.Vector3.TransformCoordinates(
+                            new BABYLON.Vector3(positions[vi], positions[vi+1], positions[vi+2]), fixMatrix);
+                        positions[vi] = v.x; positions[vi+1] = v.y; positions[vi+2] = v.z;
+                    }
+                    clone.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+                }
+                if (normals) {
+                    for (let vi = 0; vi < normals.length; vi += 3) {
+                        const n = BABYLON.Vector3.TransformNormal(
+                            new BABYLON.Vector3(normals[vi], normals[vi+1], normals[vi+2]), fixMatrix);
+                        normals[vi] = n.x; normals[vi+1] = n.y; normals[vi+2] = n.z;
+                    }
+                    clone.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
+                }
+            }
             clone.isVisible = true;
             clone.setEnabled(true);
 

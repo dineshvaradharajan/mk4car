@@ -7,7 +7,7 @@ function uid(prefix) { return prefix + '_' + (++_carPartId); }
 
 // Map car styles to GLB model files
 const CAR_MODELS = {
-    'ferrari':    { file: 'models/ferrari.glb', scale: 1.2, yOffset: 0, fixRotation: true },
+    'ferrari':    { file: 'models/race.glb', scale: 3.5, yOffset: 0 },
     'lambo':      { file: 'models/sedan-sports.glb', scale: 3.5, yOffset: 0 },
     'hatchback':  { file: 'models/hatchback-sports.glb', scale: 3.5, yOffset: 0 },
     'muscle':     { file: 'models/race.glb', scale: 3.5, yOffset: 0 },
@@ -237,31 +237,6 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
 
         if (clone) {
             clone.parent = parentNode;
-
-            // Ferrari model: bake rotation fix into each mesh
-            if (modelInfo.fixRotation) {
-                // Try all 6 possible 90° rotations to find correct one
-                // The model stands as a pillar — need to rotate around local X by -90°
-                const fixMatrix = BABYLON.Matrix.RotationX(-Math.PI / 2);
-                const positions = clone.getVerticesData(BABYLON.VertexBuffer.PositionKind);
-                const normals = clone.getVerticesData(BABYLON.VertexBuffer.NormalKind);
-                if (positions) {
-                    for (let vi = 0; vi < positions.length; vi += 3) {
-                        const v = BABYLON.Vector3.TransformCoordinates(
-                            new BABYLON.Vector3(positions[vi], positions[vi+1], positions[vi+2]), fixMatrix);
-                        positions[vi] = v.x; positions[vi+1] = v.y; positions[vi+2] = v.z;
-                    }
-                    clone.setVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
-                }
-                if (normals) {
-                    for (let vi = 0; vi < normals.length; vi += 3) {
-                        const n = BABYLON.Vector3.TransformNormal(
-                            new BABYLON.Vector3(normals[vi], normals[vi+1], normals[vi+2]), fixMatrix);
-                        normals[vi] = n.x; normals[vi+1] = n.y; normals[vi+2] = n.z;
-                    }
-                    clone.setVerticesData(BABYLON.VertexBuffer.NormalKind, normals);
-                }
-            }
             clone.isVisible = true;
             clone.setEnabled(true);
 

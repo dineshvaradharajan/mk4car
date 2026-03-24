@@ -232,6 +232,7 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
         meshParent.parent = parentNode;
         // Ferrari model: correct orientation
         meshParent.rotation.x = Math.PI;
+        meshParent.rotation.y = Math.PI / 2;
         meshParent.rotation.z = -Math.PI / 2;
     }
 

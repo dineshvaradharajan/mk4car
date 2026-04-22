@@ -111,6 +111,17 @@ function animate() {
         camShake = 0;
     }
 
+    // Motion blur + chromatic aberration ramp — Asphalt-style speed rush
+    if (typeof motionBlur !== 'undefined' && motionBlur) {
+        const targetBlur = nitroActive ? 1.6 : Math.max(0, (speedRatio - 0.5)) * 1.4;
+        motionBlur.motionStrength += (targetBlur - motionBlur.motionStrength) * Math.min(1, 8 * dt);
+    }
+    if (typeof chromaticAberration !== 'undefined' && chromaticAberration) {
+        const base = (typeof baseAberration !== 'undefined') ? baseAberration : 18;
+        const targetAb = base + (nitroActive ? 55 : speedRatio * 18);
+        chromaticAberration.aberrationAmount += (targetAb - chromaticAberration.aberrationAmount) * Math.min(1, 6 * dt);
+    }
+
     // Record frame for replay (every 3rd frame to save memory)
     if (replayFrames.length === 0 || raceTime - (replayFrames[replayFrames.length - 1]?.t || 0) > 0.05) {
         replayFrames.push({

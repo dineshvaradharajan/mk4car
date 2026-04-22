@@ -8,6 +8,9 @@ let glowLayer = null;
 let envTexture = null;
 let highlightLayer = null;
 let speedLinesOverlay = null;
+let chromaticAberration = null;
+let motionBlur = null;
+let baseAberration = 18;
 
 // Shared scene state
 let playerCar, aiCars = [];
@@ -214,12 +217,21 @@ function initScene() {
 
     // Chromatic aberration — subtle edge color fringing like real lenses
     try {
-        const chromaticAberration = new BABYLON.ChromaticAberrationPostProcess(
+        chromaticAberration = new BABYLON.ChromaticAberrationPostProcess(
             "chromatic", engine.getRenderWidth(), camera
         );
-        chromaticAberration.aberrationAmount = 18;
+        chromaticAberration.aberrationAmount = baseAberration;
         chromaticAberration.radialIntensity = 0.85;
-    } catch(e) { /* fallback gracefully */ }
+    } catch(e) { chromaticAberration = null; }
+
+    // Motion blur — Asphalt-style speed blur that ramps with velocity
+    try {
+        motionBlur = new BABYLON.MotionBlurPostProcess(
+            "motionBlur", scene, 1.0, camera
+        );
+        motionBlur.motionStrength = 0;
+        motionBlur.motionBlurSamples = 12;
+    } catch(e) { motionBlur = null; }
 
     // Strong glow/bloom layer — neon bloom
     glowLayer = new BABYLON.GlowLayer("glow", scene, {

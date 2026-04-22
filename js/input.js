@@ -22,5 +22,10 @@ window.addEventListener('resize', () => {
     }
 });
 
+// Also handle orientation change for mobile
+window.addEventListener('orientationchange', () => {
+    setTimeout(() => { if (engine) engine.resize(); }, 200);
+});
+
 // Init menu on load
 updateMainMenu();

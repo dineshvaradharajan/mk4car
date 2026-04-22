@@ -21,6 +21,12 @@ function startRace() {
     replayTime = 0;
     finishPositions = [];
 
+    // Reset arcade counters
+    if (typeof driftScore !== 'undefined') { driftScore = 0; driftCombo = 0; driftTimer = 0; }
+    if (typeof nearMissCount !== 'undefined') { nearMissCount = 0; nearMissTimer = 0; }
+    if (typeof knockdownCount !== 'undefined') knockdownCount = 0;
+    if (typeof perfectNitroActive !== 'undefined') perfectNitroActive = false;
+
     // Countdown
     const cd = document.getElementById('countdown');
     cd.classList.add('active');
@@ -80,6 +86,8 @@ function animate() {
     spawnDriftSmoke();
     updateSmoke(dt);
     updateSnowfall(dt);
+    if (typeof updateNitroFlame === 'function') updateNitroFlame();
+    if (typeof updateSpeedLines === 'function') updateSpeedLines();
 
     const car = CARS[GameState.selectedCar];
     const maxSpd = (car.speed / 100) * 120;
@@ -87,14 +95,21 @@ function animate() {
 
     updateSparks(dt);
 
-    // Dynamic FOV
+    // Dynamic FOV — more aggressive like Asphalt Legends
     const speedRatio = Math.abs(playerSpeed) / maxSpd;
     const nitroActive = keys && keys['shift'] && nitro > 0;
-    const fovBoost = nitroActive ? 6 : 0;
-    const targetFov = (65 + speedRatio * 5 + fovBoost) * Math.PI / 180;
-    camera.fov += (targetFov - camera.fov) * Math.min(1, 4 * dt);
+    const fovBoost = nitroActive ? 12 : 0;
+    const targetFov = (65 + speedRatio * 8 + fovBoost) * Math.PI / 180;
+    camera.fov += (targetFov - camera.fov) * Math.min(1, 5 * dt);
 
-    camShake = 0;
+    // Camera shake on nitro and high speed
+    if (nitroActive) {
+        camShake = 0.15;
+    } else if (speedRatio > 0.8) {
+        camShake = (speedRatio - 0.8) * 0.3;
+    } else {
+        camShake = 0;
+    }
 
     // Record frame for replay (every 3rd frame to save memory)
     if (replayFrames.length === 0 || raceTime - (replayFrames[replayFrames.length - 1]?.t || 0) > 0.05) {
@@ -117,17 +132,24 @@ function updateCamera(dt) {
     const absSpeed = Math.abs(playerSpeed);
 
     if (GameState.cameraMode === 0) {
-        // ── Chase cam with spring physics ──
-        const dist = 7 + absSpeed * 0.04;
-        const height = 2.8 + absSpeed * 0.012;
-        const lookAhead = 6 + absSpeed * 0.08;
+        // ── Chase cam — cinematic spring physics ──
+        const dist = 6.5 + absSpeed * 0.045;
+        const height = 2.5 + absSpeed * 0.014;
+        const lookAhead = 7 + absSpeed * 0.1;
 
-        const targetX = carPos.x - fwdX * dist;
-        const targetY = carPos.y + height;
-        const targetZ = carPos.z - fwdZ * dist;
+        let targetX = carPos.x - fwdX * dist;
+        let targetY = carPos.y + height;
+        let targetZ = carPos.z - fwdZ * dist;
 
-        const stiffness = 6;
-        const damping = 4.5;
+        // Camera shake
+        if (camShake > 0) {
+            targetX += (Math.random() - 0.5) * camShake;
+            targetY += (Math.random() - 0.5) * camShake * 0.5;
+            targetZ += (Math.random() - 0.5) * camShake;
+        }
+
+        const stiffness = 7;
+        const damping = 4.8;
         const ax = stiffness * (targetX - camPosX) - damping * camVelX;
         const ay = stiffness * (targetY - camPosY) - damping * camVelY;
         const az = stiffness * (targetZ - camPosZ) - damping * camVelZ;
@@ -140,12 +162,13 @@ function updateCamera(dt) {
 
         camera.position.set(camPosX, camPosY, camPosZ);
 
-        const targetRoll = -carSteerAngle * 0.08 * Math.min(absSpeed / 20, 1);
+        // More dramatic roll on steering
+        const targetRoll = -carSteerAngle * 0.12 * Math.min(absSpeed / 15, 1);
         camera.rotation.z = camera.rotation.z || 0;
-        camera.rotation.z += (targetRoll - camera.rotation.z) * Math.min(1, 5 * dt);
+        camera.rotation.z += (targetRoll - camera.rotation.z) * Math.min(1, 6 * dt);
 
         const lookX = carPos.x + fwdX * lookAhead;
-        const lookY = carPos.y + 0.8;
+        const lookY = carPos.y + 0.7;
         const lookZ = carPos.z + fwdZ * lookAhead;
         camera.setTarget(new BABYLON.Vector3(lookX, lookY, lookZ));
 
@@ -366,6 +389,13 @@ function showResultScreen() {
 
     document.getElementById('result-top-speed').textContent = Math.round(topSpeed) + ' km/h';
     document.getElementById('result-xp').textContent = `+${finishXP} XP`;
+
+    // Show arcade stats
+    const knockdownEl = document.getElementById('result-knockdowns');
+    const nearMissEl = document.getElementById('result-nearmiss');
+    if (knockdownEl) knockdownEl.textContent = (typeof knockdownCount !== 'undefined' ? knockdownCount : 0);
+    if (nearMissEl) nearMissEl.textContent = (typeof nearMissCount !== 'undefined' ? nearMissCount : 0);
+
     rs.classList.add('active');
 }
 
@@ -379,6 +409,9 @@ function finishRace() {
     if (playerPos === 1) xpEarned = 50;
     else if (playerPos === 2) xpEarned = 30;
     else if (playerPos === 3) xpEarned = 20;
+    // Bonus XP for arcade actions
+    xpEarned += (typeof knockdownCount !== 'undefined' ? knockdownCount : 0) * 5;
+    xpEarned += (typeof nearMissCount !== 'undefined' ? nearMissCount : 0) * 2;
     xpEarned *= (1 + GameState.difficulty * 0.5);
     xpEarned = Math.round(xpEarned);
 

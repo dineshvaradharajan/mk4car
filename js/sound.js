@@ -159,6 +159,47 @@ const SoundEngine = {
         noise.start(); noise.stop(this.ctx.currentTime + 0.15);
     },
 
+    playNitro() {
+        if (!this.initialized) return;
+        try {
+            const osc = this.ctx.createOscillator();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.15);
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'highpass';
+            filter.frequency.value = 400;
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.3);
+        } catch(e) {}
+    },
+
+    playKnockdown() {
+        if (!this.initialized) return;
+        try {
+            const bufferSize = this.ctx.sampleRate * 0.3;
+            const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+            const data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.08)) * 0.5;
+                data[i] += Math.sin(i * 0.02) * Math.exp(-i / (bufferSize * 0.15)) * 0.3;
+            }
+            const src = this.ctx.createBufferSource();
+            src.buffer = buffer;
+            const gain = this.ctx.createGain();
+            gain.gain.value = 0.2;
+            src.connect(gain);
+            gain.connect(this.ctx.destination);
+            src.start();
+        } catch(e) {}
+    },
+
     playCollision() {
         if (!this.initialized) return;
         const bufferSize = this.ctx.sampleRate * 0.2;

@@ -28,75 +28,90 @@ function _createCarMaterials(color) {
     const parsedColor = BABYLON.Color3.FromHexString(color);
     const darkerColor = parsedColor.scale(0.6);
 
-    // Car paint — metallic with subtle reflections
+    // Car paint — ultra-realistic clearcoat metallic
     const paint = new BABYLON.StandardMaterial(uid('carPaint'), scene);
     paint.diffuseColor = parsedColor;
-    paint.specularColor = new BABYLON.Color3(0.65, 0.65, 0.65);
-    paint.specularPower = 80;
+    paint.specularColor = new BABYLON.Color3(0.95, 0.95, 0.95);
+    paint.specularPower = 180;
     paint.backFaceCulling = true;
-    // Fresnel reflection for metallic paint
+    // Multi-layer clearcoat reflection
     if (scene.environmentTexture) {
         paint.reflectionTexture = scene.environmentTexture;
-        paint.reflectionTexture.level = 0.25;
+        paint.reflectionTexture.level = 0.55;
         paint.reflectionFresnelParameters = new BABYLON.FresnelParameters();
-        paint.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.6, 0.6, 0.6);
-        paint.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0, 0, 0);
-        paint.reflectionFresnelParameters.power = 2.5;
-        paint.reflectionFresnelParameters.bias = 0.05;
+        paint.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.9, 0.9, 0.9);
+        paint.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.08, 0.08, 0.08);
+        paint.reflectionFresnelParameters.power = 1.8;
+        paint.reflectionFresnelParameters.bias = 0.1;
     }
+    // Subtle emissive for paint depth + micro-flake effect
+    paint.emissiveColor = parsedColor.scale(0.06);
 
     // Darker accent paint (for lower body, fenders)
     const paintDark = paint.clone(uid('carPaintDk'));
     paintDark.diffuseColor = darkerColor;
 
-    // Chrome / polished metal
+    // Chrome / polished metal — mirror-like
     const chrome = new BABYLON.StandardMaterial(uid('chrome'), scene);
-    chrome.diffuseColor = new BABYLON.Color3(0.85, 0.87, 0.9);
-    chrome.specularColor = new BABYLON.Color3(0.9, 0.9, 0.9);
-    chrome.specularPower = 128;
+    chrome.diffuseColor = new BABYLON.Color3(0.9, 0.92, 0.95);
+    chrome.specularColor = new BABYLON.Color3(1, 1, 1);
+    chrome.specularPower = 256;
     if (scene.environmentTexture) {
         chrome.reflectionTexture = scene.environmentTexture;
-        chrome.reflectionTexture.level = 0.6;
+        chrome.reflectionTexture.level = 0.85;
         chrome.reflectionFresnelParameters = new BABYLON.FresnelParameters();
         chrome.reflectionFresnelParameters.leftColor = new BABYLON.Color3(1, 1, 1);
-        chrome.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.2, 0.2, 0.2);
-        chrome.reflectionFresnelParameters.power = 1.5;
-        chrome.reflectionFresnelParameters.bias = 0.1;
+        chrome.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+        chrome.reflectionFresnelParameters.power = 1.2;
+        chrome.reflectionFresnelParameters.bias = 0.15;
     }
 
-    // Alloy wheel rim
+    // Alloy wheel rim — polished metal
     const alloy = new BABYLON.StandardMaterial(uid('alloy'), scene);
-    alloy.diffuseColor = new BABYLON.Color3(0.65, 0.67, 0.7);
-    alloy.specularColor = new BABYLON.Color3(0.9, 0.9, 0.9);
-    alloy.specularPower = 200;
+    alloy.diffuseColor = new BABYLON.Color3(0.7, 0.72, 0.75);
+    alloy.specularColor = new BABYLON.Color3(1, 1, 1);
+    alloy.specularPower = 256;
+    if (scene.environmentTexture) {
+        alloy.reflectionTexture = scene.environmentTexture;
+        alloy.reflectionTexture.level = 0.5;
+        alloy.reflectionFresnelParameters = new BABYLON.FresnelParameters();
+        alloy.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.8, 0.8, 0.85);
+        alloy.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.15, 0.15, 0.15);
+        alloy.reflectionFresnelParameters.power = 1.5;
+    }
 
-    // Glass / windshield
+    // Glass / windshield — tinted reflective
     const glass = new BABYLON.StandardMaterial(uid('glass'), scene);
-    glass.diffuseColor = new BABYLON.Color3(0.05, 0.08, 0.12);
-    glass.specularColor = new BABYLON.Color3(0.8, 0.8, 0.8);
-    glass.specularPower = 128;
-    glass.alpha = 0.3;
+    glass.diffuseColor = new BABYLON.Color3(0.03, 0.05, 0.1);
+    glass.specularColor = new BABYLON.Color3(0.9, 0.9, 0.95);
+    glass.specularPower = 200;
+    glass.alpha = 0.25;
     glass.backFaceCulling = false;
     if (scene.environmentTexture) {
         glass.reflectionTexture = scene.environmentTexture;
-        glass.reflectionTexture.level = 0.4;
+        glass.reflectionTexture.level = 0.6;
         glass.reflectionFresnelParameters = new BABYLON.FresnelParameters();
-        glass.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.8, 0.85, 1);
-        glass.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0, 0, 0);
-        glass.reflectionFresnelParameters.power = 4;
-        glass.reflectionFresnelParameters.bias = 0.1;
+        glass.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.9, 0.92, 1);
+        glass.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.05, 0.05, 0.1);
+        glass.reflectionFresnelParameters.power = 3;
+        glass.reflectionFresnelParameters.bias = 0.12;
     }
 
-    // Rubber tire
+    // Rubber tire — subtle sheen like real tires
     const rubber = new BABYLON.StandardMaterial(uid('rubber'), scene);
-    rubber.diffuseColor = new BABYLON.Color3(0.06, 0.06, 0.06);
-    rubber.specularColor = new BABYLON.Color3(0.08, 0.08, 0.08);
-    rubber.specularPower = 16;
+    rubber.diffuseColor = new BABYLON.Color3(0.04, 0.04, 0.045);
+    rubber.specularColor = new BABYLON.Color3(0.12, 0.12, 0.12);
+    rubber.specularPower = 24;
+    rubber.emissiveColor = new BABYLON.Color3(0.01, 0.01, 0.01);
 
-    // Dark plastic / carbon fiber
+    // Carbon fiber — weave pattern shimmer
     const carbon = new BABYLON.StandardMaterial(uid('carbon'), scene);
-    carbon.diffuseColor = new BABYLON.Color3(0.04, 0.04, 0.04);
-    carbon.specularColor = new BABYLON.Color3(0.35, 0.35, 0.35);
+    carbon.diffuseColor = new BABYLON.Color3(0.03, 0.03, 0.035);
+    carbon.specularColor = new BABYLON.Color3(0.45, 0.45, 0.5);
+    if (scene.environmentTexture) {
+        carbon.reflectionTexture = scene.environmentTexture;
+        carbon.reflectionTexture.level = 0.15;
+    }
     carbon.specularPower = 64;
 
     // Matte dark (undertray, diffuser)
@@ -117,22 +132,24 @@ function _createCarMaterials(color) {
     brakeDisc.specularColor = new BABYLON.Color3(0.7, 0.7, 0.7);
     brakeDisc.specularPower = 100;
 
-    // Headlight emissive
+    // Headlight emissive — bright LED style
     const headlight = new BABYLON.StandardMaterial(uid('hl'), scene);
     headlight.diffuseColor = new BABYLON.Color3(1, 1, 0.95);
-    headlight.emissiveColor = new BABYLON.Color3(1, 1, 0.8);
+    headlight.emissiveColor = new BABYLON.Color3(1, 1, 0.9);
     headlight.specularColor = new BABYLON.Color3(1, 1, 1);
     headlight.specularPower = 256;
+    headlight.disableLighting = true;
 
     // DRL (daytime running light, white)
     const drl = new BABYLON.StandardMaterial(uid('drl'), scene);
     drl.diffuseColor = new BABYLON.Color3(0.95, 0.97, 1);
     drl.emissiveColor = new BABYLON.Color3(0.7, 0.75, 0.9);
 
-    // Tail light emissive
+    // Tail light emissive — bright LED red glow
     const taillight = new BABYLON.StandardMaterial(uid('tl'), scene);
-    taillight.diffuseColor = new BABYLON.Color3(0.9, 0, 0);
-    taillight.emissiveColor = new BABYLON.Color3(0.9, 0.06, 0.02);
+    taillight.diffuseColor = new BABYLON.Color3(1, 0, 0);
+    taillight.emissiveColor = new BABYLON.Color3(1, 0.08, 0.03);
+    taillight.disableLighting = true;
 
     // Indicator orange
     const indicator = new BABYLON.StandardMaterial(uid('ind'), scene);
@@ -225,6 +242,18 @@ function clearModelCache() {
 function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
     const parsedColor = BABYLON.Color3.FromHexString(color);
 
+    // For Ferrari: create a fixed inner node that won't be touched by physics
+    let meshTarget = parentNode;
+    if (modelInfo.fixRotation) {
+        const inner = new BABYLON.TransformNode(uid('ferrariFix'), scene);
+        inner.parent = parentNode;
+        // The Ferrari model's Y axis points forward (stands like pillar)
+        // Rotate so Y-up becomes Z-forward: tilt 90° on X
+        inner.rotation.x = Math.PI / 2;
+        console.log('Ferrari fix node created, rotation.x =', inner.rotation.x);
+        meshTarget = inner;
+    }
+
     originalMeshes.forEach((mesh, idx) => {
         if (mesh.getClassName() === 'TransformNode' && idx === 0) return;
 
@@ -236,14 +265,7 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
         }
 
         if (clone) {
-            clone.parent = parentNode;
-
-            // Bake rotation fix into Ferrari mesh vertices permanently
-            if (modelInfo.fixRotation && clone.bakeTransformIntoVertices) {
-                try {
-                    clone.bakeTransformIntoVertices(BABYLON.Matrix.RotationX(-Math.PI / 2));
-                } catch(e) {}
-            }
+            clone.parent = meshTarget;
             clone.isVisible = true;
             clone.setEnabled(true);
 
@@ -434,19 +456,25 @@ function _addHeadlightBeams(group, W, H, L, wR) {
         const light = new BABYLON.SpotLight(
             uid('hlBeam'),
             new BABYLON.Vector3(sx * (W / 2 - 0.25), wR + H * 0.55, L / 2 + 0.1),
-            new BABYLON.Vector3(0, -0.15, 1),
-            Math.PI / 4, // angle
-            2, // exponent
+            new BABYLON.Vector3(0, -0.12, 1),
+            Math.PI / 3.5,
+            2,
             scene
         );
-        light.diffuse = new BABYLON.Color3(1, 0.97, 0.85);
-        light.intensity = 0.8;
-        light.range = 60;
+        light.diffuse = new BABYLON.Color3(1, 0.97, 0.88);
+        light.intensity = 1.5;
+        light.range = 90;
         light.parent = group;
-
-        // Exclude from shadow to save perf
         light.shadowEnabled = false;
     }
+
+    // Tail glow (red point light behind car)
+    const tailGlow = new BABYLON.PointLight(uid('tailGlow'),
+        new BABYLON.Vector3(0, wR + H * 0.4, -L / 2 - 0.3), scene);
+    tailGlow.diffuse = new BABYLON.Color3(1, 0.1, 0.05);
+    tailGlow.intensity = 0.6;
+    tailGlow.range = 12;
+    tailGlow.parent = group;
 }
 
 // ── Side mirrors ──

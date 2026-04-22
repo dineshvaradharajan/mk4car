@@ -204,16 +204,20 @@ function buildTrackMesh(trackDef) {
     roadVD.applyToMesh(roadMesh);
 
     const roadMat = new BABYLON.StandardMaterial(tuid("roadMat"), scene);
-    roadMat.diffuseColor = new BABYLON.Color3(1, 1, 1); // use vertex colors
-    roadMat.specularColor = new BABYLON.Color3(0.18, 0.18, 0.18);
-    roadMat.specularPower = 32;
+    roadMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
+    roadMat.specularColor = new BABYLON.Color3(0.35, 0.35, 0.38);
+    roadMat.specularPower = 48;
     roadMat.backFaceCulling = false;
-    // Wet road Fresnel reflection
+    // Wet/polished road reflections — Asphalt Legends style
+    if (scene.environmentTexture) {
+        roadMat.reflectionTexture = scene.environmentTexture;
+        roadMat.reflectionTexture.level = 0.12;
+    }
     roadMat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
-    roadMat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.12, 0.12, 0.15);
-    roadMat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0, 0, 0);
-    roadMat.reflectionFresnelParameters.power = 3;
-    roadMat.reflectionFresnelParameters.bias = 0.05;
+    roadMat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.2, 0.2, 0.25);
+    roadMat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.02, 0.02, 0.02);
+    roadMat.reflectionFresnelParameters.power = 2.5;
+    roadMat.reflectionFresnelParameters.bias = 0.08;
     roadMesh.material = roadMat;
     roadMesh.receiveShadows = true;
     roadMesh.hasVertexAlpha = false;
@@ -239,8 +243,9 @@ function buildTrackMesh(trackDef) {
 
     // Center line dashes
     const dashMat = new BABYLON.StandardMaterial(tuid("dashMat"), scene);
-    dashMat.diffuseColor = new BABYLON.Color3(0.95, 0.95, 0.9);
-    dashMat.emissiveColor = new BABYLON.Color3(0.15, 0.15, 0.12);
+    dashMat.diffuseColor = new BABYLON.Color3(1, 1, 0.95);
+    dashMat.emissiveColor = new BABYLON.Color3(0.2, 0.2, 0.15);
+    dashMat.specularColor = new BABYLON.Color3(0.3, 0.3, 0.3);
     dashMat.backFaceCulling = false;
 
     // Merge dashes into fewer meshes for perf
@@ -283,8 +288,9 @@ function buildTrackMesh(trackDef) {
 
     // Edge lines (solid white lines on road edges)
     const edgeMat = new BABYLON.StandardMaterial(tuid("edgeMat"), scene);
-    edgeMat.diffuseColor = new BABYLON.Color3(0.9, 0.9, 0.85);
-    edgeMat.emissiveColor = new BABYLON.Color3(0.1, 0.1, 0.08);
+    edgeMat.diffuseColor = new BABYLON.Color3(0.95, 0.95, 0.9);
+    edgeMat.emissiveColor = new BABYLON.Color3(0.25, 0.25, 0.2);
+    edgeMat.specularColor = new BABYLON.Color3(0.4, 0.4, 0.4);
     edgeMat.backFaceCulling = false;
 
     for (let side = -1; side <= 1; side += 2) {
@@ -331,6 +337,9 @@ function buildTrackMesh(trackDef) {
         vd.applyToMesh(curbMesh);
         const cMat = new BABYLON.StandardMaterial(tuid("curbMat"), scene);
         cMat.backFaceCulling = false;
+        cMat.emissiveColor = new BABYLON.Color3(0.12, 0.04, 0.04);
+        cMat.specularColor = new BABYLON.Color3(0.3, 0.3, 0.3);
+        cMat.specularPower = 40;
         curbMesh.material = cMat;
         curbMesh.hasVertexAlpha = false;
     });
@@ -980,6 +989,9 @@ function addScenery(trackDef) {
         addDesertScenery(trackDef);
     }
 
+    // ── Blue water bodies on every track ──
+    addWaterBodies(trackDef, isCity, isDesert, isSnow);
+
     // ── Clouds (billboard planes) ──
     if (!isNight) {
         addClouds(trackDef);
@@ -1062,73 +1074,121 @@ function addCatchFencing(trackDef) {
     }
 }
 
-// ── Sponsor banners/billboards along the track ──
+// ── Sponsor billboards with brand-style advertisements ──
 function addSponsorBanners(trackDef) {
     const n = trackPoints.length;
     const hw = trackDef.trackWidth / 2;
     const up = new BABYLON.Vector3(0, 1, 0);
+    const isNight = trackDef.skyColor === 0x0a0a2e || trackDef.skyColor === 0x050515 || trackDef.skyColor === 0x331111;
 
-    // Sponsor colors (simulated brand colors)
-    const sponsorColors = [
-        { bg: new BABYLON.Color3(0.9, 0.1, 0.1), em: new BABYLON.Color3(0.3, 0.02, 0.02) },
-        { bg: new BABYLON.Color3(0.1, 0.1, 0.8), em: new BABYLON.Color3(0.02, 0.02, 0.2) },
-        { bg: new BABYLON.Color3(0.1, 0.7, 0.1), em: new BABYLON.Color3(0.02, 0.15, 0.02) },
-        { bg: new BABYLON.Color3(0.9, 0.7, 0.0), em: new BABYLON.Color3(0.2, 0.15, 0.0) },
-        { bg: new BABYLON.Color3(0.8, 0.2, 0.8), em: new BABYLON.Color3(0.15, 0.03, 0.15) },
-        { bg: new BABYLON.Color3(0.0, 0.7, 0.8), em: new BABYLON.Color3(0.0, 0.12, 0.15) },
+    // Fictional sponsor brands with realistic styling
+    const sponsors = [
+        { name: 'TURBO MAX', sub: 'PERFORMANCE FUEL', bg: [0.85,0.08,0.08], accent: [1,0.9,0.2], text: [1,1,1] },
+        { name: 'APEX TIRES', sub: 'GRIP THE ROAD', bg: [0.05,0.05,0.12], accent: [0.2,0.5,1], text: [1,1,1] },
+        { name: 'VELOCITY', sub: 'ENERGY DRINK', bg: [0.0,0.6,0.15], accent: [0.9,1,0], text: [1,1,1] },
+        { name: 'NITRO ZONE', sub: 'RACING OIL', bg: [0.9,0.55,0.0], accent: [0.1,0.1,0.1], text: [0.1,0.05,0] },
+        { name: 'PHANTOM', sub: 'LUXURY WATCHES', bg: [0.08,0.08,0.08], accent: [0.85,0.75,0.5], text: [0.9,0.85,0.7] },
+        { name: 'BLAZE GT', sub: 'MOTOR SPORT', bg: [0.6,0.0,0.7], accent: [1,0.3,0.8], text: [1,1,1] },
+        { name: 'DRIFT KING', sub: 'SUSPENSION SYSTEMS', bg: [0.0,0.35,0.65], accent: [0,0.85,1], text: [1,1,1] },
+        { name: 'THUNDER', sub: 'EXHAUST SYSTEMS', bg: [0.12,0.12,0.12], accent: [1,0.4,0.1], text: [1,0.95,0.9] },
+        { name: 'EAGLE EYE', sub: 'RACING HELMETS', bg: [0.75,0.0,0.0], accent: [1,1,1], text: [1,1,1] },
+        { name: 'AERO TECH', sub: 'CARBON FIBER PARTS', bg: [0.04,0.04,0.06], accent: [0.3,0.8,1], text: [0.8,0.9,1] },
+        { name: 'VIPER OIL', sub: 'SYNTHETIC LUBRICANTS', bg: [0.0,0.5,0.0], accent: [0.9,0.9,0], text: [1,1,1] },
+        { name: 'MK4 RACER', sub: 'PLAY NOW', bg: [0.85,0.35,0.1], accent: [1,0.8,0.3], text: [1,1,1] },
+        { name: 'STORMLINE', sub: 'BRAKE SYSTEMS', bg: [0.15,0.15,0.3], accent: [0.9,0.2,0.2], text: [1,1,1] },
+        { name: 'TORQUE PRO', sub: 'TURBOCHARGERS', bg: [0.5,0.0,0.0], accent: [1,0.6,0], text: [1,1,1] },
+        { name: 'ZERO DRAG', sub: 'AERODYNAMICS', bg: [0.02,0.15,0.3], accent: [0,0.9,0.7], text: [0.9,1,0.95] },
+        { name: 'POLE POS', sub: 'RACING GEAR', bg: [1,0.85,0], accent: [0.1,0.1,0.1], text: [0.1,0.05,0] },
     ];
 
-    // Place billboards every ~25 track points
-    const bannerSpacing = Math.floor(n / 12);
-    for (let b = 0; b < 12; b++) {
-        const i = (b * bannerSpacing + Math.floor(n * 0.1)) % n;
+    // Place 16 billboards around the track
+    const bannerSpacing = Math.floor(n / 16);
+    for (let b = 0; b < 16; b++) {
+        const i = (b * bannerSpacing + Math.floor(n * 0.08)) % n;
         const p = trackPoints[i];
         const dir = getTrackDirectionAt(trackPoints, i / n);
         const right = BABYLON.Vector3.Cross(up, dir).normalize();
 
         const side = b % 2 === 0 ? 1 : -1;
-        const sc = sponsorColors[b % sponsorColors.length];
+        const sp = sponsors[b % sponsors.length];
+        const emScale = isNight ? 0.4 : 0.12;
 
-        // Billboard panel
+        const bpos = p.add(right.scale(side * (hw + 6)));
+
+        // Main billboard background
         const billboard = BABYLON.MeshBuilder.CreatePlane(tuid("billboard"), {
-            width: 8, height: 2.5
+            width: 10, height: 3.2
         }, scene);
         const billMat = new BABYLON.StandardMaterial(tuid("billMat"), scene);
-        billMat.diffuseColor = sc.bg;
-        billMat.emissiveColor = sc.em;
+        billMat.diffuseColor = new BABYLON.Color3(sp.bg[0], sp.bg[1], sp.bg[2]);
+        billMat.emissiveColor = new BABYLON.Color3(sp.bg[0] * emScale, sp.bg[1] * emScale, sp.bg[2] * emScale);
+        billMat.specularColor = new BABYLON.Color3(0.2, 0.2, 0.2);
         billMat.backFaceCulling = false;
         billboard.material = billMat;
-
-        const bpos = p.add(right.scale(side * (hw + 5)));
-        billboard.position = new BABYLON.Vector3(bpos.x, p.y + 2.5, bpos.z);
+        billboard.position = new BABYLON.Vector3(bpos.x, p.y + 3.2, bpos.z);
         billboard.rotation.y = Math.atan2(dir.x, dir.z);
 
-        // Support poles
+        // Brand name text area (accent color bar)
+        const nameBar = BABYLON.MeshBuilder.CreatePlane(tuid("nameBar"), {
+            width: 9.2, height: 1.4
+        }, scene);
+        const nameBarMat = new BABYLON.StandardMaterial(tuid("nameBarMat"), scene);
+        nameBarMat.diffuseColor = new BABYLON.Color3(sp.accent[0], sp.accent[1], sp.accent[2]);
+        nameBarMat.emissiveColor = new BABYLON.Color3(sp.accent[0] * emScale * 1.5, sp.accent[1] * emScale * 1.5, sp.accent[2] * emScale * 1.5);
+        nameBarMat.backFaceCulling = false;
+        nameBar.material = nameBarMat;
+        nameBar.position = new BABYLON.Vector3(bpos.x + dir.x * 0.02, p.y + 3.5, bpos.z + dir.z * 0.02);
+        nameBar.rotation.y = Math.atan2(dir.x, dir.z);
+
+        // Subtitle strip
+        const subStrip = BABYLON.MeshBuilder.CreatePlane(tuid("subStrip"), {
+            width: 9.2, height: 0.6
+        }, scene);
+        const subMat = new BABYLON.StandardMaterial(tuid("subMat"), scene);
+        subMat.diffuseColor = new BABYLON.Color3(sp.text[0] * 0.7, sp.text[1] * 0.7, sp.text[2] * 0.7);
+        subMat.emissiveColor = new BABYLON.Color3(sp.text[0] * emScale * 0.5, sp.text[1] * emScale * 0.5, sp.text[2] * emScale * 0.5);
+        subMat.backFaceCulling = false;
+        subStrip.material = subMat;
+        subStrip.position = new BABYLON.Vector3(bpos.x + dir.x * 0.03, p.y + 2.3, bpos.z + dir.z * 0.03);
+        subStrip.rotation.y = Math.atan2(dir.x, dir.z);
+
+        // Billboard frame (dark border)
+        const frame = BABYLON.MeshBuilder.CreatePlane(tuid("billFrame"), {
+            width: 10.4, height: 3.6
+        }, scene);
+        const frameMat = new BABYLON.StandardMaterial(tuid("frameMat"), scene);
+        frameMat.diffuseColor = new BABYLON.Color3(0.15, 0.15, 0.15);
+        frameMat.backFaceCulling = false;
+        frame.material = frameMat;
+        frame.position = new BABYLON.Vector3(bpos.x - dir.x * 0.03, p.y + 3.2, bpos.z - dir.z * 0.03);
+        frame.rotation.y = Math.atan2(dir.x, dir.z);
+
+        // Steel support poles
+        const poleMat = new BABYLON.StandardMaterial(tuid("billPoleMat"), scene);
+        poleMat.diffuseColor = new BABYLON.Color3(0.35, 0.35, 0.38);
+        poleMat.specularColor = new BABYLON.Color3(0.3, 0.3, 0.3);
         for (let ps = -1; ps <= 1; ps += 2) {
             const pole = BABYLON.MeshBuilder.CreateCylinder(tuid("billPole"), {
-                diameter: 0.15, height: 3.5, tessellation: 6
+                diameter: 0.18, height: 4.5, tessellation: 8
             }, scene);
-            const poleMat = new BABYLON.StandardMaterial(tuid("billPoleMat"), scene);
-            poleMat.diffuseColor = new BABYLON.Color3(0.4, 0.4, 0.4);
             pole.material = poleMat;
             pole.position = new BABYLON.Vector3(
-                bpos.x + right.x * ps * 3.5,
-                p.y + 1.75,
-                bpos.z + right.z * ps * 3.5
+                bpos.x + right.x * ps * 4.2,
+                p.y + 2.25,
+                bpos.z + right.z * ps * 4.2
             );
         }
 
-        // Color stripe at bottom (simulating text area)
-        const stripe = BABYLON.MeshBuilder.CreatePlane(tuid("billStripe"), {
-            width: 7.5, height: 0.5
-        }, scene);
-        const stripeMat = new BABYLON.StandardMaterial(tuid("billStripeMat"), scene);
-        stripeMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
-        stripeMat.emissiveColor = new BABYLON.Color3(0.1, 0.1, 0.1);
-        stripeMat.backFaceCulling = false;
-        stripe.material = stripeMat;
-        stripe.position = new BABYLON.Vector3(bpos.x + dir.x * 0.05, p.y + 1.5, bpos.z + dir.z * 0.05);
-        stripe.rotation.y = Math.atan2(dir.x, dir.z);
+        // Night: add spotlight illuminating the billboard
+        if (isNight) {
+            const spotLight = new BABYLON.SpotLight(tuid("billLight"),
+                new BABYLON.Vector3(bpos.x, p.y + 7, bpos.z),
+                new BABYLON.Vector3(0, -1, 0),
+                Math.PI / 3, 2, scene);
+            spotLight.diffuse = new BABYLON.Color3(1, 0.95, 0.85);
+            spotLight.intensity = 1.5;
+            spotLight.range = 15;
+        }
     }
 }
 
@@ -1977,6 +2037,53 @@ function addDesertScenery(trackDef) {
     }
 }
 
+// ── Blue water bodies on every map ──
+function addWaterBodies(trackDef, isCity, isDesert, isSnow) {
+    const waterMat = new BABYLON.StandardMaterial(tuid("waterMat"), scene);
+    waterMat.diffuseColor = new BABYLON.Color3(0.05, 0.18, 0.45);
+    waterMat.specularColor = new BABYLON.Color3(0.6, 0.7, 0.9);
+    waterMat.specularPower = 90;
+    waterMat.alpha = 0.82;
+    waterMat.emissiveColor = new BABYLON.Color3(0.01, 0.05, 0.12);
+    waterMat.backFaceCulling = false;
+    if (scene.environmentTexture) {
+        waterMat.reflectionTexture = scene.environmentTexture;
+        waterMat.reflectionTexture.level = 0.35;
+        waterMat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
+        waterMat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.4, 0.5, 0.7);
+        waterMat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.02, 0.04, 0.08);
+        waterMat.reflectionFresnelParameters.power = 2;
+        waterMat.reflectionFresnelParameters.bias = 0.1;
+    }
+
+    _trackSeed = 4321;
+
+    // Place 2-4 water bodies around the track at different positions
+    const waterCount = isDesert ? 1 : (isCity ? 2 : 3);
+    for (let w = 0; w < waterCount; w++) {
+        const angle = (w / waterCount) * Math.PI * 2 + trackRand() * 1.2;
+        const dist = 320 + trackRand() * 120;
+        const radius = 40 + trackRand() * 50;
+        const wx = Math.cos(angle) * dist;
+        const wz = Math.sin(angle) * dist;
+
+        const water = BABYLON.MeshBuilder.CreateDisc(tuid("water"), {
+            radius: radius, tessellation: 32
+        }, scene);
+        water.material = waterMat;
+        water.rotation.x = Math.PI / 2;
+        water.position = new BABYLON.Vector3(wx, 0.1, wz);
+
+        // Animate gentle wave shimmer
+        water._wavePhase = trackRand() * Math.PI * 2;
+        scene.registerBeforeRender(() => {
+            if (water.isDisposed()) return;
+            const t = performance.now() * 0.001;
+            waterMat.alpha = 0.78 + Math.sin(t * 0.8 + water._wavePhase) * 0.04;
+        });
+    }
+}
+
 // ── Clouds (billboard planes drifting slowly) ──
 function addClouds(trackDef) {
     const cloudMat = new BABYLON.StandardMaterial(tuid("cloudMat"), scene);
@@ -2178,15 +2285,20 @@ function addSnowbanks(trackDef) {
         mesh.material = snowMat;
     }
 
-    // ── Frozen lake in the distance ──
+    // ── Frozen lake — blue water ──
     const lake = BABYLON.MeshBuilder.CreateDisc(tuid("frozenLake"), {
-        radius: 60, tessellation: 24
+        radius: 70, tessellation: 32
     }, scene);
     const lakeMat = new BABYLON.StandardMaterial(tuid("lakeMat"), scene);
-    lakeMat.diffuseColor = new BABYLON.Color3(0.7, 0.8, 0.9);
-    lakeMat.specularColor = new BABYLON.Color3(0.4, 0.4, 0.5);
-    lakeMat.specularPower = 64;
-    lakeMat.alpha = 0.85;
+    lakeMat.diffuseColor = new BABYLON.Color3(0.08, 0.25, 0.55);
+    lakeMat.specularColor = new BABYLON.Color3(0.5, 0.6, 0.8);
+    lakeMat.specularPower = 80;
+    lakeMat.alpha = 0.88;
+    lakeMat.emissiveColor = new BABYLON.Color3(0.02, 0.06, 0.15);
+    if (scene.environmentTexture) {
+        lakeMat.reflectionTexture = scene.environmentTexture;
+        lakeMat.reflectionTexture.level = 0.3;
+    }
     lake.material = lakeMat;
     lake.rotation.x = Math.PI / 2;
     lake.position = new BABYLON.Vector3(350, 0.05, 300);

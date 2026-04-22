@@ -1,5 +1,5 @@
 // ============================================================
-//  HUD & MINIMAP — Optimized (no DOM thrashing)
+//  HUD & MINIMAP — Arcade racing style
 // ============================================================
 let _lastPanelUpdate = 0;
 let _cachedPositions = null;
@@ -30,18 +30,67 @@ function updateHUD() {
     const displaySpeed = Math.round(Math.sqrt(carVelX * carVelX + carVelZ * carVelZ) * 3.6);
     _getHudEl('hud-speed').textContent = displaySpeed;
     _getHudEl('hud-lap').textContent = Math.min(playerLap, GameState.laps);
-    _getHudEl('nitro-bar').style.width = nitro + '%';
-    _getHudEl('drift-indicator').style.display = drifting && keys['p'] ? 'block' : 'none';
 
-    // Lap time display
-    const lapTime = raceTime - lapStartTime;
-    const lapMins = Math.floor(lapTime / 60);
-    const lapSecs = (lapTime % 60).toFixed(1);
+    // Nitro bar with color glow based on level
+    const nitroBar = _getHudEl('nitro-bar');
+    nitroBar.style.width = nitro + '%';
+    if (nitro > 90) {
+        nitroBar.style.background = 'linear-gradient(90deg,#00ddff,#ffffff)';
+        nitroBar.style.boxShadow = '0 0 15px rgba(0,221,255,.8)';
+    } else if (nitro > 50) {
+        nitroBar.style.background = 'linear-gradient(90deg,#ff6b35,#00ddff)';
+        nitroBar.style.boxShadow = '0 0 8px rgba(255,107,53,.5)';
+    } else {
+        nitroBar.style.background = 'linear-gradient(90deg,#ff6b35,#f7c948)';
+        nitroBar.style.boxShadow = '0 0 5px rgba(255,107,53,.3)';
+    }
+
+    // Drift indicator — show during any drift
+    const driftEl = _getHudEl('drift-indicator');
+    if (drifting && Math.abs(playerSpeed) > 15) {
+        driftEl.style.display = 'block';
+        const comboText = driftCombo > 1 ? ` x${driftCombo}` : '';
+        driftEl.textContent = `DRIFT${comboText}`;
+        // Pulse effect
+        const pulse = 0.8 + Math.sin(performance.now() * 0.01) * 0.2;
+        driftEl.style.opacity = String(pulse);
+    } else {
+        driftEl.style.display = 'none';
+    }
+
+    // Speed color changes at high speed
+    const speedEl = _getHudEl('hud-speed');
+    const car = CARS[GameState.selectedCar];
+    const maxSpd = (car.speed / 100) * 85;
+    const speedRatio = Math.abs(playerSpeed) / maxSpd;
+    if (keys && keys['shift'] && nitro > 0) {
+        speedEl.style.color = '#00ddff';
+        speedEl.style.textShadow = '0 0 25px rgba(0,221,255,.6),0 0 50px rgba(0,221,255,.3)';
+    } else if (speedRatio > 0.85) {
+        speedEl.style.color = '#ff3333';
+        speedEl.style.textShadow = '0 0 20px rgba(255,51,51,.5)';
+    } else {
+        speedEl.style.color = '#ff6b35';
+        speedEl.style.textShadow = '0 0 20px rgba(255,107,53,.4)';
+    }
 
     const positions = getPositions();
     const playerPos = positions.findIndex(p => p.isPlayer) + 1;
     const suffixes = ['st','nd','rd'];
-    _getHudEl('hud-position').textContent = playerPos + (suffixes[playerPos - 1] || 'th');
+    const posEl = _getHudEl('hud-position');
+    posEl.textContent = playerPos + (suffixes[playerPos - 1] || 'th');
+
+    // Position color — gold for 1st, highlight changes
+    if (playerPos === 1) {
+        posEl.style.color = '#f7c948';
+        posEl.style.textShadow = '0 0 15px rgba(247,201,72,.5)';
+    } else if (playerPos <= 3) {
+        posEl.style.color = '#4ecdc4';
+        posEl.style.textShadow = '0 0 10px rgba(78,205,196,.3)';
+    } else {
+        posEl.style.color = '#ff6b9d';
+        posEl.style.textShadow = '0 0 10px rgba(255,107,157,.3)';
+    }
 
     const mins = Math.floor(raceTime / 60);
     const secs = Math.floor(raceTime % 60);
@@ -67,60 +116,87 @@ function updateHUD() {
 function updateMinimap() {
     const canvas = _getHudEl('minimap');
     if (!canvas) return;
+
+    const size = canvas.clientWidth || 180;
+    if (canvas.width !== size) { canvas.width = size; canvas.height = size; }
+    const half = size / 2;
+    const scale = size / 180;
+
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, 180, 180);
+    ctx.clearRect(0, 0, size, size);
 
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    // Dark background with glow border
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.beginPath();
-    ctx.arc(90, 90, 85, 0, Math.PI * 2);
+    ctx.arc(half, half, half - 5 * scale, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = 'rgba(255,107,53,0.3)';
+    ctx.lineWidth = 2 * scale;
+    ctx.stroke();
 
-    // Track outline
-    ctx.strokeStyle = '#444';
-    ctx.lineWidth = 4;
+    // Track outline — glowing
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 5 * scale;
     ctx.beginPath();
-    // Draw every 3rd point for performance
+    const trackScale = 0.3 * scale;
     for (let i = 0; i < trackPoints.length; i += 3) {
         const p = trackPoints[i];
-        const mx = 90 + p.x * 0.3;
-        const my = 90 + p.z * 0.3;
+        const mx = half + p.x * trackScale;
+        const my = half + p.z * trackScale;
         if (i === 0) ctx.moveTo(mx, my);
         else ctx.lineTo(mx, my);
     }
     ctx.closePath();
     ctx.stroke();
 
+    // Track glow overlay
+    ctx.strokeStyle = 'rgba(255,107,53,0.15)';
+    ctx.lineWidth = 8 * scale;
+    ctx.stroke();
+
     // Start/finish flag
     const fp = trackPoints[0];
-    const fmx = 90 + fp.x * 0.3;
-    const fmy = 90 + fp.z * 0.3;
-    const fs = 4;
+    const fmx = half + fp.x * trackScale;
+    const fmy = half + fp.z * trackScale;
+    const fs = 4 * scale;
     for (let cx = -1; cx <= 1; cx++) {
         for (let cy = -1; cy <= 1; cy++) {
             ctx.fillStyle = (cx + cy) % 2 === 0 ? '#fff' : '#000';
             ctx.fillRect(fmx + cx * fs - fs, fmy + cy * fs - fs, fs, fs);
         }
     }
-    ctx.strokeStyle = '#ff6b35';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(fmx - fs - fs, fmy - fs - fs, fs * 3, fs * 3);
 
-    // AI dots
+    // AI dots with glow
     aiCars.forEach(ai => {
         const p = getTrackPointAt(trackPoints, ai.t);
+        const px = half + p.x * trackScale;
+        const py = half + p.z * trackScale;
+        // Glow
+        ctx.fillStyle = ai.color + '44';
+        ctx.beginPath();
+        ctx.arc(px, py, 5 * scale, 0, Math.PI * 2);
+        ctx.fill();
+        // Dot
         ctx.fillStyle = ai.color;
         ctx.beginPath();
-        ctx.arc(90 + p.x * 0.3, 90 + p.z * 0.3, 3, 0, Math.PI * 2);
+        ctx.arc(px, py, 3 * scale, 0, Math.PI * 2);
         ctx.fill();
     });
 
-    // Player dot
+    // Player dot with pulsing glow
     const pp = getTrackPointAt(trackPoints, playerT);
+    const ppx = half + pp.x * trackScale;
+    const ppy = half + pp.z * trackScale;
+    const pulse = 6 + Math.sin(performance.now() * 0.005) * 2;
+    ctx.fillStyle = 'rgba(255,107,53,0.25)';
+    ctx.beginPath();
+    ctx.arc(ppx, ppy, pulse * scale, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = GameState.selectedColor;
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * scale;
     ctx.beginPath();
-    ctx.arc(90 + pp.x * 0.3, 90 + pp.z * 0.3, 5, 0, Math.PI * 2);
+    ctx.arc(ppx, ppy, 5 * scale, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 }

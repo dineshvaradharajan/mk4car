@@ -1094,7 +1094,7 @@ function addSponsorBanners(trackDef) {
         { name: 'EAGLE EYE', sub: 'RACING HELMETS', bg: [0.75,0.0,0.0], accent: [1,1,1], text: [1,1,1] },
         { name: 'AERO TECH', sub: 'CARBON FIBER PARTS', bg: [0.04,0.04,0.06], accent: [0.3,0.8,1], text: [0.8,0.9,1] },
         { name: 'VIPER OIL', sub: 'SYNTHETIC LUBRICANTS', bg: [0.0,0.5,0.0], accent: [0.9,0.9,0], text: [1,1,1] },
-        { name: 'MK4 RACER', sub: 'PLAY NOW', bg: [0.85,0.35,0.1], accent: [1,0.8,0.3], text: [1,1,1] },
+        { name: 'RACING FOR LIFE', sub: 'PLAY NOW', bg: [0.85,0.35,0.1], accent: [1,0.8,0.3], text: [1,1,1] },
         { name: 'STORMLINE', sub: 'BRAKE SYSTEMS', bg: [0.15,0.15,0.3], accent: [0.9,0.2,0.2], text: [1,1,1] },
         { name: 'TORQUE PRO', sub: 'TURBOCHARGERS', bg: [0.5,0.0,0.0], accent: [1,0.6,0], text: [1,1,1] },
         { name: 'ZERO DRAG', sub: 'AERODYNAMICS', bg: [0.02,0.15,0.3], accent: [0,0.9,0.7], text: [0.9,1,0.95] },

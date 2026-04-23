@@ -5,21 +5,21 @@
 let _carPartId = 0;
 function uid(prefix) { return prefix + '_' + (++_carPartId); }
 
-// Map car styles to GLB model files (higher-poly CC-BY models from Poly Pizza).
-// rotationY aligns the model's visual "nose-forward" with the game's forward
-// axis (+Z at heading 0). Common values: 0 (already forward), Math.PI (180°
-// flipped), ±Math.PI / 2 (90° sideways).
+// Map car styles to GLB model files. We use a single "target length" (3.2
+// units) to normalize every car, with per-model `targetScale` as a fudge
+// factor. If one specific model still looks bigger or smaller than the
+// others in-race, bump its targetScale individually.
 const CAR_MODELS = {
-    'ferrari':    { file: 'models/ferrari-f40.glb',      scale: 1.6, yOffset: 0, rotationY: 0},
-    'lambo':      { file: 'models/sportster.glb',        scale: 1.0, yOffset: 0, rotationY: 0},
-    'hatchback':  { file: 'models/convertible.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
-    'muscle':     { file: 'models/dodge-challenger.glb', scale: 1.0, yOffset: 0, rotationY: 0},
-    'f1':         { file: 'models/delorean.glb',         scale: 1.0, yOffset: 0, rotationY: 0},
-    'koenigsegg': { file: 'models/nissan-gtr.glb',       scale: 1.0, yOffset: 0, rotationY: 0},
-    'gt':         { file: 'models/camaro-zl1.glb',       scale: 1.0, yOffset: 0, rotationY: 0},
-    'supra4':     { file: 'models/toyota-ae86.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
-    'supra5':     { file: 'models/mazda-rx7.glb',        scale: 1.0, yOffset: 0, rotationY: 0},
-    'bugatti':    { file: 'models/rolls-royce.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
+    'ferrari':    { file: 'models/ferrari-f40.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'lambo':      { file: 'models/sportster.glb',        targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'hatchback':  { file: 'models/convertible.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'muscle':     { file: 'models/dodge-challenger.glb', targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'f1':         { file: 'models/delorean.glb',         targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'koenigsegg': { file: 'models/nissan-gtr.glb',       targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'gt':         { file: 'models/camaro-zl1.glb',       targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'supra4':     { file: 'models/toyota-ae86.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'supra5':     { file: 'models/mazda-rx7.glb',        targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'bugatti':    { file: 'models/rolls-royce.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
 };
 
 // Cache loaded models
@@ -343,20 +343,38 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
         }
     });
 
-    // Auto-fit: normalize car to ~3.2 units along longest axis
-    const fitScale = _autoOrientAndFitCar(parentNode, inner, 3.2) * (modelInfo.scale || 1);
-    parentNode.scaling = new BABYLON.Vector3(fitScale, fitScale, fitScale);
+    // Normalize size: measure raw bounds, scale so longest axis == targetLen
+    const refreshAll = (node) => {
+        if (node.computeWorldMatrix) node.computeWorldMatrix(true);
+        if (node.refreshBoundingInfo) node.refreshBoundingInfo();
+        if (node.getChildren) node.getChildren().forEach(refreshAll);
+    };
+    refreshAll(parentNode);
 
-    // Lift the clones so the car's lowest point sits at y=0 in parentNode
-    // local space. Without this, GLBs whose pivot is at the car's center
-    // end up half-buried in the road (physics puts carY at ground level).
-    parentNode.computeWorldMatrix(true);
-    const lifted = _measureCarBounds(parentNode);
-    if (lifted && fitScale > 0) {
-        inner.position.y -= lifted.min.y / fitScale;
+    const raw = _measureCarBounds(parentNode);
+    const targetLen = modelInfo.targetLen || 3.2;
+    let fitScale = 1;
+    if (raw) {
+        const maxDim = Math.max(raw.size.x, raw.size.y, raw.size.z);
+        if (maxDim > 0.001 && maxDim < 10000) {
+            fitScale = targetLen / maxDim;
+        }
+    }
+    parentNode.scaling = new BABYLON.Vector3(fitScale, fitScale, fitScale);
+    refreshAll(parentNode);
+
+    // Lift so lowest vertex sits at parentNode local y=0 (wheels on ground)
+    const post = _measureCarBounds(parentNode);
+    if (post && fitScale > 0) {
+        inner.position.y -= post.min.y / fitScale;
+        refreshAll(parentNode);
     }
 
-    parentNode.position.y += modelInfo.yOffset;
+    console.log('[cars] fit', modelInfo.file, 'rawMax=', raw ? Math.max(raw.size.x, raw.size.y, raw.size.z).toFixed(2) : '?',
+        'fitScale=', fitScale.toFixed(3),
+        'lift=', post ? (-post.min.y / fitScale).toFixed(3) : '?');
+
+    parentNode.position.y += (modelInfo.yOffset || 0);
     _addHeadlightBeams(parentNode, 2.2 * fitScale, 0.5 * fitScale, 5.5 * fitScale, 0.42 * fitScale);
 
     return parentNode;
@@ -385,23 +403,6 @@ function _measureCarBounds(parentNode) {
     };
     visit(parentNode);
     return min ? { min, max, size: max.subtract(min) } : null;
-}
-
-// Simple auto-fit: measure bounds once, return scale factor that normalizes
-// the longest axis to targetLen. No auto-orient — per-model rotationX/Y/Z
-// on CAR_MODELS handles any misoriented GLBs individually.
-function _autoOrientAndFitCar(parentNode, _innerOrient, targetLen) {
-    const b = _measureCarBounds(parentNode);
-    if (!b) return 1;
-    const maxDim = Math.max(b.size.x, b.size.y, b.size.z);
-    if (maxDim < 0.0001) return 1;
-    const factor = targetLen / maxDim;
-    // Safety clamp — absurd bounds from degenerate meshes shouldn't vanish the car
-    if (factor < 0.001 || factor > 1000) {
-        console.warn('[cars] auto-fit factor out of range:', factor, 'for bounds', b.size);
-        return 1;
-    }
-    return factor;
 }
 
 // ── Mesh builder helpers ──

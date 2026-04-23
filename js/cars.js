@@ -10,16 +10,16 @@ function uid(prefix) { return prefix + '_' + (++_carPartId); }
 // axis (+Z at heading 0). Common values: 0 (already forward), Math.PI (180°
 // flipped), ±Math.PI / 2 (90° sideways).
 const CAR_MODELS = {
-    'ferrari':    { file: 'models/ferrari-f40.glb',      scale: 1.6, yOffset: 0, rotationY: Math.PI },
-    'lambo':      { file: 'models/sportster.glb',        scale: 1.0, yOffset: 0, rotationY: Math.PI },
-    'hatchback':  { file: 'models/convertible.glb',      scale: 1.0, yOffset: 0, rotationY: Math.PI },
-    'muscle':     { file: 'models/dodge-challenger.glb', scale: 1.0, yOffset: 0, rotationY: Math.PI },
-    'f1':         { file: 'models/delorean.glb',         scale: 1.0, yOffset: 0, rotationY: Math.PI },
-    'koenigsegg': { file: 'models/nissan-gtr.glb',       scale: 1.0, yOffset: 0, rotationY: Math.PI },
-    'gt':         { file: 'models/camaro-zl1.glb',       scale: 1.0, yOffset: 0, rotationY: Math.PI },
-    'supra4':     { file: 'models/toyota-ae86.glb',      scale: 1.0, yOffset: 0, rotationY: Math.PI },
-    'supra5':     { file: 'models/mazda-rx7.glb',        scale: 1.0, yOffset: 0, rotationY: Math.PI },
-    'bugatti':    { file: 'models/rolls-royce.glb',      scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'ferrari':    { file: 'models/ferrari-f40.glb',      scale: 1.6, yOffset: 0, rotationY: 0},
+    'lambo':      { file: 'models/sportster.glb',        scale: 1.0, yOffset: 0, rotationY: 0},
+    'hatchback':  { file: 'models/convertible.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
+    'muscle':     { file: 'models/dodge-challenger.glb', scale: 1.0, yOffset: 0, rotationY: 0},
+    'f1':         { file: 'models/delorean.glb',         scale: 1.0, yOffset: 0, rotationY: 0},
+    'koenigsegg': { file: 'models/nissan-gtr.glb',       scale: 1.0, yOffset: 0, rotationY: 0},
+    'gt':         { file: 'models/camaro-zl1.glb',       scale: 1.0, yOffset: 0, rotationY: 0},
+    'supra4':     { file: 'models/toyota-ae86.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
+    'supra5':     { file: 'models/mazda-rx7.glb',        scale: 1.0, yOffset: 0, rotationY: 0},
+    'bugatti':    { file: 'models/rolls-royce.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
 };
 
 // Cache loaded models
@@ -245,18 +245,15 @@ function clearModelCache() {
 function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
     const parsedColor = BABYLON.Color3.FromHexString(color);
 
-    // Intermediate TransformNode lets us rotate the imported model to align
-    // its native "nose-forward" direction with the game's +Z forward axis,
-    // without disturbing the parentNode transform (which physics controls).
-    let meshTarget = parentNode;
-    if (modelInfo.fixRotation || modelInfo.rotationY || modelInfo.rotationX) {
-        const inner = new BABYLON.TransformNode(uid('modelOrient'), scene);
-        inner.parent = parentNode;
-        if (modelInfo.fixRotation) inner.rotation.x = Math.PI / 2;
-        if (modelInfo.rotationX)   inner.rotation.x = (inner.rotation.x || 0) + modelInfo.rotationX;
-        if (modelInfo.rotationY)   inner.rotation.y = modelInfo.rotationY;
-        meshTarget = inner;
-    }
+    // Always create an orient node. We apply manual per-model rotations here,
+    // then run an auto-orient pass after cloning that lays the car flat if
+    // the GLB was authored with a non-standard up-axis.
+    const inner = new BABYLON.TransformNode(uid('modelOrient'), scene);
+    inner.parent = parentNode;
+    if (modelInfo.fixRotation) inner.rotation.x = Math.PI / 2;
+    if (modelInfo.rotationX)   inner.rotation.x = (inner.rotation.x || 0) + modelInfo.rotationX;
+    if (modelInfo.rotationY)   inner.rotation.y = modelInfo.rotationY;
+    const meshTarget = inner;
 
     originalMeshes.forEach((mesh, idx) => {
         if (mesh.getClassName() === 'TransformNode' && idx === 0) return;
@@ -346,11 +343,9 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
         }
     });
 
-    // Auto-fit: the CC-BY Poly Pizza models have wildly different native
-    // sizes (0.08 for Ferrari, 191 for Rolls Royce). Normalize every car
-    // to the same world-space footprint (~3.2 units long) so they all
-    // race at the same physical scale.
-    const fitScale = _autoFitCarScale(parentNode, 3.2) * (modelInfo.scale || 1);
+    // Auto-orient (detect and correct non-Y-up models) + auto-fit (normalize
+    // to ~3.2 units long). Runs before any scaling is applied to parentNode.
+    const fitScale = _autoOrientAndFitCar(parentNode, inner, 3.2) * (modelInfo.scale || 1);
     parentNode.scaling = new BABYLON.Vector3(fitScale, fitScale, fitScale);
     parentNode.position.y += modelInfo.yOffset;
 
@@ -359,36 +354,57 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
     return parentNode;
 }
 
-// Returns a uniform scale factor that normalizes the given car node so its
-// longest world-space axis equals targetLen. Must be called BEFORE any scale
-// is applied to parentNode.
-function _autoFitCarScale(parentNode, targetLen) {
+// Walk descendants of parentNode and return the union world bounding box of
+// every non-TransformNode mesh. Returns null when no usable meshes exist.
+function _measureCarBounds(parentNode) {
     parentNode.computeWorldMatrix(true);
-    const meshes = [];
+    let min = null, max = null;
     const visit = (n) => {
         if (n && n.getClassName && n.getClassName() !== 'TransformNode'
             && n.getBoundingInfo && n.isEnabled && n.isEnabled()) {
-            meshes.push(n);
+            if (n.computeWorldMatrix) n.computeWorldMatrix(true);
+            const bb = n.getBoundingInfo().boundingBox;
+            const lo = bb.minimumWorld, hi = bb.maximumWorld;
+            if (isFinite(lo.x) && isFinite(hi.x)) {
+                const dx = hi.x - lo.x, dy = hi.y - lo.y, dz = hi.z - lo.z;
+                if (dx >= 0.0001 || dy >= 0.0001 || dz >= 0.0001) {
+                    if (!min) { min = lo.clone(); max = hi.clone(); }
+                    else { min.minimizeInPlace(lo); max.maximizeInPlace(hi); }
+                }
+            }
         }
         if (n && n.getChildren) n.getChildren().forEach(visit);
     };
     visit(parentNode);
-    if (!meshes.length) return 1;
+    return min ? { min, max, size: max.subtract(min) } : null;
+}
 
-    let min = null, max = null;
-    for (const m of meshes) {
-        if (m.computeWorldMatrix) m.computeWorldMatrix(true);
-        const bb = m.getBoundingInfo().boundingBox;
-        const lo = bb.minimumWorld, hi = bb.maximumWorld;
-        if (!isFinite(lo.x) || !isFinite(hi.x)) continue;
-        const dx = hi.x - lo.x, dy = hi.y - lo.y, dz = hi.z - lo.z;
-        if (dx < 0.0001 && dy < 0.0001 && dz < 0.0001) continue;
-        if (!min) { min = lo.clone(); max = hi.clone(); }
-        else { min.minimizeInPlace(lo); max.maximizeInPlace(hi); }
+// Auto-orient: if the car's smallest world-axis extent isn't Y, the GLB has
+// a non-standard up-axis. We rotate the inner orient node so the smallest
+// extent ends up on Y (car lays flat). Then auto-fit scales the whole thing
+// so the longest axis equals targetLen.
+function _autoOrientAndFitCar(parentNode, innerOrient, targetLen) {
+    const b1 = _measureCarBounds(parentNode);
+    if (!b1) return 1;
+    const sx = b1.size.x, sy = b1.size.y, sz = b1.size.z;
+
+    // Find the smallest extent — that's the car's height axis in model space
+    const min = Math.min(sx, sy, sz);
+    if (sy !== min) {
+        if (sx === min) {
+            // Height is on X — rotate -π/2 around Z so X maps to Y
+            innerOrient.rotation.z = (innerOrient.rotation.z || 0) - Math.PI / 2;
+        } else {
+            // Height is on Z — rotate π/2 around X so Z maps to Y
+            innerOrient.rotation.x = (innerOrient.rotation.x || 0) + Math.PI / 2;
+        }
+        parentNode.computeWorldMatrix(true);
     }
-    if (!min) return 1;
-    const s = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
-    return s > 0.0001 ? (targetLen / s) : 1;
+
+    const b2 = _measureCarBounds(parentNode);
+    if (!b2) return 1;
+    const maxDim = Math.max(b2.size.x, b2.size.y, b2.size.z);
+    return maxDim > 0.0001 ? (targetLen / maxDim) : 1;
 }
 
 // ── Mesh builder helpers ──

@@ -177,15 +177,13 @@ function _loadPreviewCar(style, color) {
     const rootNode = new BABYLON.TransformNode('previewCar_' + style, _previewScene);
     _previewBodyMaterials = [];
 
-    let meshTarget = rootNode;
-    if (modelInfo.fixRotation || modelInfo.rotationY || modelInfo.rotationX) {
-        const inner = new BABYLON.TransformNode('previewOrient', _previewScene);
-        inner.parent = rootNode;
-        if (modelInfo.fixRotation) inner.rotation.x = Math.PI / 2;
-        if (modelInfo.rotationX)   inner.rotation.x = (inner.rotation.x || 0) + modelInfo.rotationX;
-        if (modelInfo.rotationY)   inner.rotation.y = modelInfo.rotationY;
-        meshTarget = inner;
-    }
+    // Always create orient node so _previewFitToTurntable can auto-rotate
+    const inner = new BABYLON.TransformNode('previewOrient', _previewScene);
+    inner.parent = rootNode;
+    if (modelInfo.fixRotation) inner.rotation.x = Math.PI / 2;
+    if (modelInfo.rotationX)   inner.rotation.x = (inner.rotation.x || 0) + modelInfo.rotationX;
+    if (modelInfo.rotationY)   inner.rotation.y = modelInfo.rotationY;
+    const meshTarget = inner;
 
     const lastSlash = modelInfo.file.lastIndexOf('/');
     const rootUrl  = lastSlash >= 0 ? modelInfo.file.substring(0, lastSlash + 1) : './';
@@ -350,25 +348,40 @@ function _previewFitToTurntable(root, label) {
     const meshes = collectMeshes(root);
     if (!meshes.length) { console.warn('[preview] no meshes under', label); return; }
 
+    // Locate the orient node we created during load so auto-orient can rotate it
+    const orient = root.getChildren().find(c => c.name && c.name.startsWith('previewOrient')) || root;
+
     const b1 = worldBounds(meshes);
     if (!b1) { console.warn('[preview] no valid bounds for', label); return; }
-    const s1 = Math.max(b1.max.x - b1.min.x, b1.max.y - b1.min.y, b1.max.z - b1.min.z);
-    if (s1 < 0.0001) { console.warn('[preview] degenerate size for', label); return; }
 
-    const target = 4.0;
-    const factor = target / s1;
-    root.scaling.scaleInPlace(factor);
-    root.computeWorldMatrix(true);
+    // Auto-orient: if the smallest axis isn't Y, rotate so it becomes Y
+    const sx = b1.max.x - b1.min.x, sy = b1.max.y - b1.min.y, sz = b1.max.z - b1.min.z;
+    const m = Math.min(sx, sy, sz);
+    if (sy !== m) {
+        if (sx === m) orient.rotation.z = (orient.rotation.z || 0) - Math.PI / 2;
+        else          orient.rotation.x = (orient.rotation.x || 0) + Math.PI / 2;
+        root.computeWorldMatrix(true);
+    }
 
     const b2 = worldBounds(meshes);
     if (!b2) return;
-    root.position.x -= (b2.min.x + b2.max.x) / 2;
-    root.position.y -= b2.min.y + 0.5;
-    root.position.z -= (b2.min.z + b2.max.z) / 2;
+    const s2 = Math.max(b2.max.x - b2.min.x, b2.max.y - b2.min.y, b2.max.z - b2.min.z);
+    if (s2 < 0.0001) return;
+
+    const target = 4.0;
+    const factor = target / s2;
+    root.scaling.scaleInPlace(factor);
     root.computeWorldMatrix(true);
 
-    console.log('[preview] fit', label,
-        'native=', s1.toFixed(2), 'factor=', factor.toFixed(3));
+    const b3 = worldBounds(meshes);
+    if (!b3) return;
+    root.position.x -= (b3.min.x + b3.max.x) / 2;
+    root.position.y -= b3.min.y + 0.5;
+    root.position.z -= (b3.min.z + b3.max.z) / 2;
+    root.computeWorldMatrix(true);
+
+    console.log('[preview] fit', label, 'orientedOn=', sy !== m ? (sx === m ? 'Z' : 'X') : 'none',
+        'native=', s2.toFixed(2), 'factor=', factor.toFixed(3));
 }
 
 function _retintPreviewCar(color) {

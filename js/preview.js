@@ -178,10 +178,12 @@ function _loadPreviewCar(style, color) {
     _previewBodyMaterials = [];
 
     let meshTarget = rootNode;
-    if (modelInfo.fixRotation) {
-        const inner = new BABYLON.TransformNode('previewFix', _previewScene);
+    if (modelInfo.fixRotation || modelInfo.rotationY || modelInfo.rotationX) {
+        const inner = new BABYLON.TransformNode('previewOrient', _previewScene);
         inner.parent = rootNode;
-        inner.rotation.x = Math.PI / 2;
+        if (modelInfo.fixRotation) inner.rotation.x = Math.PI / 2;
+        if (modelInfo.rotationX)   inner.rotation.x = (inner.rotation.x || 0) + modelInfo.rotationX;
+        if (modelInfo.rotationY)   inner.rotation.y = modelInfo.rotationY;
         meshTarget = inner;
     }
 

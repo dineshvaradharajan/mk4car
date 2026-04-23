@@ -5,18 +5,21 @@
 let _carPartId = 0;
 function uid(prefix) { return prefix + '_' + (++_carPartId); }
 
-// Map car styles to GLB model files (higher-poly CC-BY models from Poly Pizza)
+// Map car styles to GLB model files (higher-poly CC-BY models from Poly Pizza).
+// rotationY aligns the model's visual "nose-forward" with the game's forward
+// axis (+Z at heading 0). Common values: 0 (already forward), Math.PI (180°
+// flipped), ±Math.PI / 2 (90° sideways).
 const CAR_MODELS = {
-    'ferrari':    { file: 'models/ferrari-f40.glb',      scale: 1.6, yOffset: 0 },
-    'lambo':      { file: 'models/sportster.glb',        scale: 1.0, yOffset: 0 },
-    'hatchback':  { file: 'models/convertible.glb',      scale: 1.0, yOffset: 0 },
-    'muscle':     { file: 'models/dodge-challenger.glb', scale: 1.0, yOffset: 0 },
-    'f1':         { file: 'models/delorean.glb',         scale: 1.0, yOffset: 0 },
-    'koenigsegg': { file: 'models/nissan-gtr.glb',       scale: 1.0, yOffset: 0 },
-    'gt':         { file: 'models/camaro-zl1.glb',       scale: 1.0, yOffset: 0 },
-    'supra4':     { file: 'models/toyota-ae86.glb',      scale: 1.0, yOffset: 0 },
-    'supra5':     { file: 'models/mazda-rx7.glb',        scale: 1.0, yOffset: 0 },
-    'bugatti':    { file: 'models/rolls-royce.glb',      scale: 1.0, yOffset: 0 },
+    'ferrari':    { file: 'models/ferrari-f40.glb',      scale: 1.6, yOffset: 0, rotationY: Math.PI },
+    'lambo':      { file: 'models/sportster.glb',        scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'hatchback':  { file: 'models/convertible.glb',      scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'muscle':     { file: 'models/dodge-challenger.glb', scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'f1':         { file: 'models/delorean.glb',         scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'koenigsegg': { file: 'models/nissan-gtr.glb',       scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'gt':         { file: 'models/camaro-zl1.glb',       scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'supra4':     { file: 'models/toyota-ae86.glb',      scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'supra5':     { file: 'models/mazda-rx7.glb',        scale: 1.0, yOffset: 0, rotationY: Math.PI },
+    'bugatti':    { file: 'models/rolls-royce.glb',      scale: 1.0, yOffset: 0, rotationY: Math.PI },
 };
 
 // Cache loaded models
@@ -242,15 +245,16 @@ function clearModelCache() {
 function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
     const parsedColor = BABYLON.Color3.FromHexString(color);
 
-    // For Ferrari: create a fixed inner node that won't be touched by physics
+    // Intermediate TransformNode lets us rotate the imported model to align
+    // its native "nose-forward" direction with the game's +Z forward axis,
+    // without disturbing the parentNode transform (which physics controls).
     let meshTarget = parentNode;
-    if (modelInfo.fixRotation) {
-        const inner = new BABYLON.TransformNode(uid('ferrariFix'), scene);
+    if (modelInfo.fixRotation || modelInfo.rotationY || modelInfo.rotationX) {
+        const inner = new BABYLON.TransformNode(uid('modelOrient'), scene);
         inner.parent = parentNode;
-        // The Ferrari model's Y axis points forward (stands like pillar)
-        // Rotate so Y-up becomes Z-forward: tilt 90° on X
-        inner.rotation.x = Math.PI / 2;
-        console.log('Ferrari fix node created, rotation.x =', inner.rotation.x);
+        if (modelInfo.fixRotation) inner.rotation.x = Math.PI / 2;
+        if (modelInfo.rotationX)   inner.rotation.x = (inner.rotation.x || 0) + modelInfo.rotationX;
+        if (modelInfo.rotationY)   inner.rotation.y = modelInfo.rotationY;
         meshTarget = inner;
     }
 

@@ -348,28 +348,15 @@ function _previewFitToTurntable(root, label) {
     const meshes = collectMeshes(root);
     if (!meshes.length) { console.warn('[preview] no meshes under', label); return; }
 
-    // Locate the orient node we created during load so auto-orient can rotate it
-    const orient = root.getChildren().find(c => c.name && c.name.startsWith('previewOrient')) || root;
-
     const b1 = worldBounds(meshes);
     if (!b1) { console.warn('[preview] no valid bounds for', label); return; }
 
-    // Auto-orient: if the smallest axis isn't Y, rotate so it becomes Y
-    const sx = b1.max.x - b1.min.x, sy = b1.max.y - b1.min.y, sz = b1.max.z - b1.min.z;
-    const m = Math.min(sx, sy, sz);
-    if (sy !== m) {
-        if (sx === m) orient.rotation.z = (orient.rotation.z || 0) - Math.PI / 2;
-        else          orient.rotation.x = (orient.rotation.x || 0) + Math.PI / 2;
-        root.computeWorldMatrix(true);
-    }
-
-    const b2 = worldBounds(meshes);
-    if (!b2) return;
-    const s2 = Math.max(b2.max.x - b2.min.x, b2.max.y - b2.min.y, b2.max.z - b2.min.z);
-    if (s2 < 0.0001) return;
+    const s1 = Math.max(b1.max.x - b1.min.x, b1.max.y - b1.min.y, b1.max.z - b1.min.z);
+    if (s1 < 0.0001) return;
 
     const target = 4.0;
-    const factor = target / s2;
+    const factor = target / s1;
+    if (factor < 0.001 || factor > 1000) { console.warn('[preview] factor out of range', factor); return; }
     root.scaling.scaleInPlace(factor);
     root.computeWorldMatrix(true);
 
@@ -380,8 +367,7 @@ function _previewFitToTurntable(root, label) {
     root.position.z -= (b3.min.z + b3.max.z) / 2;
     root.computeWorldMatrix(true);
 
-    console.log('[preview] fit', label, 'orientedOn=', sy !== m ? (sx === m ? 'Z' : 'X') : 'none',
-        'native=', s2.toFixed(2), 'factor=', factor.toFixed(3));
+    console.log('[preview] fit', label, 'native=', s1.toFixed(2), 'factor=', factor.toFixed(3));
 }
 
 function _retintPreviewCar(color) {

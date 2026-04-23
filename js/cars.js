@@ -19,7 +19,7 @@ const CAR_MODELS = {
     'gt':         { file: 'models/camaro-zl1.glb',       scale: 1.0, yOffset: 0, rotationY: 0},
     'supra4':     { file: 'models/toyota-ae86.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
     'supra5':     { file: 'models/mazda-rx7.glb',        scale: 1.0, yOffset: 0, rotationY: 0},
-    'bugatti':    { file: 'models/car-concept.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
+    'bugatti':    { file: 'models/rolls-royce.glb',      scale: 1.0, yOffset: 0, rotationY: 0},
 };
 
 // Cache loaded models
@@ -379,32 +379,21 @@ function _measureCarBounds(parentNode) {
     return min ? { min, max, size: max.subtract(min) } : null;
 }
 
-// Auto-orient: if the car's smallest world-axis extent isn't Y, the GLB has
-// a non-standard up-axis. We rotate the inner orient node so the smallest
-// extent ends up on Y (car lays flat). Then auto-fit scales the whole thing
-// so the longest axis equals targetLen.
-function _autoOrientAndFitCar(parentNode, innerOrient, targetLen) {
-    const b1 = _measureCarBounds(parentNode);
-    if (!b1) return 1;
-    const sx = b1.size.x, sy = b1.size.y, sz = b1.size.z;
-
-    // Find the smallest extent — that's the car's height axis in model space
-    const min = Math.min(sx, sy, sz);
-    if (sy !== min) {
-        if (sx === min) {
-            // Height is on X — rotate -π/2 around Z so X maps to Y
-            innerOrient.rotation.z = (innerOrient.rotation.z || 0) - Math.PI / 2;
-        } else {
-            // Height is on Z — rotate π/2 around X so Z maps to Y
-            innerOrient.rotation.x = (innerOrient.rotation.x || 0) + Math.PI / 2;
-        }
-        parentNode.computeWorldMatrix(true);
+// Simple auto-fit: measure bounds once, return scale factor that normalizes
+// the longest axis to targetLen. No auto-orient — per-model rotationX/Y/Z
+// on CAR_MODELS handles any misoriented GLBs individually.
+function _autoOrientAndFitCar(parentNode, _innerOrient, targetLen) {
+    const b = _measureCarBounds(parentNode);
+    if (!b) return 1;
+    const maxDim = Math.max(b.size.x, b.size.y, b.size.z);
+    if (maxDim < 0.0001) return 1;
+    const factor = targetLen / maxDim;
+    // Safety clamp — absurd bounds from degenerate meshes shouldn't vanish the car
+    if (factor < 0.001 || factor > 1000) {
+        console.warn('[cars] auto-fit factor out of range:', factor, 'for bounds', b.size);
+        return 1;
     }
-
-    const b2 = _measureCarBounds(parentNode);
-    if (!b2) return 1;
-    const maxDim = Math.max(b2.size.x, b2.size.y, b2.size.z);
-    return maxDim > 0.0001 ? (targetLen / maxDim) : 1;
+    return factor;
 }
 
 // ── Mesh builder helpers ──

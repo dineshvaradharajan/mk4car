@@ -342,13 +342,49 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
         }
     });
 
-    parentNode.scaling = new BABYLON.Vector3(modelInfo.scale, modelInfo.scale, modelInfo.scale);
+    // Auto-fit: the CC-BY Poly Pizza models have wildly different native
+    // sizes (0.08 for Ferrari, 191 for Rolls Royce). Normalize every car
+    // to the same world-space footprint (~3.2 units long) so they all
+    // race at the same physical scale.
+    const fitScale = _autoFitCarScale(parentNode, 3.2) * (modelInfo.scale || 1);
+    parentNode.scaling = new BABYLON.Vector3(fitScale, fitScale, fitScale);
     parentNode.position.y += modelInfo.yOffset;
 
-    // Add headlight SpotLights to GLB models too
-    _addHeadlightBeams(parentNode, 2.2 * modelInfo.scale, 0.5 * modelInfo.scale, 5.5 * modelInfo.scale, 0.42 * modelInfo.scale);
+    _addHeadlightBeams(parentNode, 2.2 * fitScale, 0.5 * fitScale, 5.5 * fitScale, 0.42 * fitScale);
 
     return parentNode;
+}
+
+// Returns a uniform scale factor that normalizes the given car node so its
+// longest world-space axis equals targetLen. Must be called BEFORE any scale
+// is applied to parentNode.
+function _autoFitCarScale(parentNode, targetLen) {
+    parentNode.computeWorldMatrix(true);
+    const meshes = [];
+    const visit = (n) => {
+        if (n && n.getClassName && n.getClassName() !== 'TransformNode'
+            && n.getBoundingInfo && n.isEnabled && n.isEnabled()) {
+            meshes.push(n);
+        }
+        if (n && n.getChildren) n.getChildren().forEach(visit);
+    };
+    visit(parentNode);
+    if (!meshes.length) return 1;
+
+    let min = null, max = null;
+    for (const m of meshes) {
+        if (m.computeWorldMatrix) m.computeWorldMatrix(true);
+        const bb = m.getBoundingInfo().boundingBox;
+        const lo = bb.minimumWorld, hi = bb.maximumWorld;
+        if (!isFinite(lo.x) || !isFinite(hi.x)) continue;
+        const dx = hi.x - lo.x, dy = hi.y - lo.y, dz = hi.z - lo.z;
+        if (dx < 0.0001 && dy < 0.0001 && dz < 0.0001) continue;
+        if (!min) { min = lo.clone(); max = hi.clone(); }
+        else { min.minimizeInPlace(lo); max.maximizeInPlace(hi); }
+    }
+    if (!min) return 1;
+    const s = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
+    return s > 0.0001 ? (targetLen / s) : 1;
 }
 
 // ── Mesh builder helpers ──

@@ -9,7 +9,7 @@ function uid(prefix) { return prefix + '_' + (++_carPartId); }
 const CAR_MODELS = {
     'ferrari':    { file: 'models/ferrari-f40.glb',      scale: 1.6, yOffset: 0 },
     'lambo':      { file: 'models/sportster.glb',        scale: 1.0, yOffset: 0 },
-    'hatchback':  { file: 'models/hatchback-sports.glb', scale: 3.5, yOffset: 0 },
+    'hatchback':  { file: 'models/convertible.glb',      scale: 1.0, yOffset: 0 },
     'muscle':     { file: 'models/dodge-challenger.glb', scale: 1.0, yOffset: 0 },
     'f1':         { file: 'models/delorean.glb',         scale: 1.0, yOffset: 0 },
     'koenigsegg': { file: 'models/nissan-gtr.glb',       scale: 1.0, yOffset: 0 },

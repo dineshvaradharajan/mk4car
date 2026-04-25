@@ -169,7 +169,14 @@ function initCarPreview() {
     updateCarPreview();
 }
 
-// ── GLB model loader — mirrors cars.js cloneModelInto pattern exactly ──
+// ── GLB model loader — parents the GLB hierarchy under our orient node.
+// Earlier versions cloned each imported mesh into the scene, but mesh.clone()
+// recursively clones children, and the loop also cloned those same children
+// directly — producing two overlapping subtrees and leaving descendant clones
+// stuck in the disabled state of their freshly-disabled originals. The
+// turntable then rendered as a half-empty (often fully empty) showroom.
+// Reparenting the GLB's __root__ under inner keeps the GLTF's own hierarchy
+// and transforms intact and avoids the whole clone-juggle.
 function _loadPreviewCar(style, color) {
     const modelInfo = CAR_MODELS[style];
     if (!modelInfo) return null;
@@ -177,13 +184,11 @@ function _loadPreviewCar(style, color) {
     const rootNode = new BABYLON.TransformNode('previewCar_' + style, _previewScene);
     _previewBodyMaterials = [];
 
-    // Always create orient node so _previewFitToTurntable can auto-rotate
     const inner = new BABYLON.TransformNode('previewOrient', _previewScene);
     inner.parent = rootNode;
     if (modelInfo.fixRotation) inner.rotation.x = Math.PI / 2;
     if (modelInfo.rotationX)   inner.rotation.x = (inner.rotation.x || 0) + modelInfo.rotationX;
     if (modelInfo.rotationY)   inner.rotation.y = modelInfo.rotationY;
-    const meshTarget = inner;
 
     const lastSlash = modelInfo.file.lastIndexOf('/');
     const rootUrl  = lastSlash >= 0 ? modelInfo.file.substring(0, lastSlash + 1) : './';
@@ -196,69 +201,61 @@ function _loadPreviewCar(style, color) {
         }
         console.log('[preview] GLB loaded:', fileName, 'meshes:', meshes.length);
 
-        // Hide the GLB's original meshes — we render cloned copies
-        meshes.forEach(m => {
-            if (m.setEnabled) m.setEnabled(false);
-            m.isVisible = false;
-        });
-
         const parsedColor = BABYLON.Color3.FromHexString(color);
 
-        meshes.forEach((mesh, idx) => {
-            if (mesh.getClassName && mesh.getClassName() === 'TransformNode' && idx === 0) return;
+        // Reparent any top-level imported nodes (the GLTF __root__ and any siblings)
+        // under our orient node. Children come along automatically.
+        meshes.forEach(m => {
+            if (!m.parent || m.parent === _previewScene) {
+                m.parent = inner;
+            }
+        });
 
-            let clone;
-            try { clone = mesh.clone('pc_' + idx + '_' + Math.random().toString(36).slice(2,6)); }
-            catch (e) { try { clone = mesh.createInstance('pci_' + idx); } catch (e2) { clone = null; } }
-            if (!clone) return;
+        // Tint body panels with the selected color. The GLBs load as PBRMaterial,
+        // so we read/write `albedoColor` (StandardMaterial uses `diffuseColor` —
+        // support both so future swaps don't silently break tinting).
+        meshes.forEach((mesh) => {
+            if (!mesh.material) return;
+            const origMat = mesh.material;
+            let mat;
+            try { mat = origMat.clone('pmat_' + Math.random().toString(36).slice(2,7)); } catch(e) { mat = origMat; }
+            mesh.material = mat;
 
-            clone.parent = meshTarget;
-            clone.isVisible = true;
-            if (clone.setEnabled) clone.setEnabled(true);
+            // Frustum culling on freshly-reparented meshes can drop them on the
+            // first frames before bounding info catches up. Force them active.
+            mesh.alwaysSelectAsActiveMesh = true;
 
-            // Tint body panels with the selected color (match cars.js heuristic)
-            if (clone.material) {
-                const origMat = clone.material;
-                let mat;
-                try { mat = origMat.clone('pmat_' + idx + '_' + Math.random().toString(36).slice(2,6)); } catch (e) { mat = origMat; }
-                clone.material = mat;
+            const baseColor = mat.albedoColor || mat.diffuseColor;
+            if (!baseColor) return;
+            const brightness = (baseColor.r + baseColor.g + baseColor.b) / 3;
 
-                let brightness = 0.5;
-                if (mat.diffuseColor) {
-                    brightness = (mat.diffuseColor.r + mat.diffuseColor.g + mat.diffuseColor.b) / 3;
-                }
+            const setBase = (c) => {
+                if ('albedoColor' in mat) mat.albedoColor = c;
+                if ('diffuseColor' in mat) mat.diffuseColor = c;
+            };
 
-                if (brightness > 0.35 && brightness < 0.95) {
-                    mat.diffuseColor = parsedColor;
+            if (brightness > 0.35 && brightness < 0.95) {
+                setBase(parsedColor);
+                if ('emissiveColor' in mat) mat.emissiveColor = parsedColor.scale(0.04);
+                // PBR has metallic/roughness rather than specularPower
+                if ('metallic' in mat) { mat.metallic = 0.6; mat.roughness = 0.35; }
+                if ('specularColor' in mat) {
                     mat.specularColor = new BABYLON.Color3(0.85, 0.85, 0.9);
                     mat.specularPower = 140;
-                    mat.emissiveColor = parsedColor.scale(0.04);
-                    if (_previewScene.environmentTexture) {
-                        mat.reflectionTexture = _previewScene.environmentTexture;
-                        mat.reflectionTexture.level = 0.55;
-                        mat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
-                        mat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(1, 1, 1);
-                        mat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.08, 0.08, 0.08);
-                        mat.reflectionFresnelParameters.power = 1.6;
-                    }
-                    _previewBodyMaterials.push(mat);
-                } else if (brightness < 0.25) {
-                    // Darker trim — glass / tires / accents. Polish a little.
+                }
+                _previewBodyMaterials.push(mat);
+            } else if (brightness < 0.25) {
+                if ('metallic' in mat) { mat.metallic = 0.4; mat.roughness = 0.6; }
+                if ('specularColor' in mat) {
                     mat.specularColor = new BABYLON.Color3(0.5, 0.5, 0.55);
                     mat.specularPower = 120;
-                    if (_previewScene.environmentTexture) {
-                        mat.reflectionTexture = _previewScene.environmentTexture;
-                        mat.reflectionTexture.level = 0.3;
-                    }
                 }
             }
         });
 
-        // Start at scale 1 — actual scaling happens in _previewFitToTurntable
         rootNode.scaling.set(1, 1, 1);
         rootNode.position.set(0, 0, 0);
 
-        // Defer fit so clones have had a chance to settle into the hierarchy
         setTimeout(() => _previewFitToTurntable(rootNode, fileName), 60);
     }, null, (_scene, message, exception) => {
         console.warn('[preview] GLB load failed for ' + style + ':', message, exception);
@@ -316,6 +313,16 @@ function _previewFitToTurntable(root, label) {
     if (!root || !_previewScene) return;
     if (_previewCarRoot !== root) return;
 
+    // Walk subtree forcing world-matrix + bounding-info refresh on every node.
+    // Without this, cloned child meshes keep stale (zero) world bounds — Babylon's
+    // frustum culling drops them, so they never render, so the world matrix never
+    // refreshes. Result: a turntable with no car on it.
+    const refreshAll = (n) => {
+        if (n && n.computeWorldMatrix) n.computeWorldMatrix(true);
+        if (n && n.refreshBoundingInfo) n.refreshBoundingInfo();
+        if (n && n.getChildren) n.getChildren().forEach(refreshAll);
+    };
+
     const collectMeshes = (node) => {
         const out = [];
         const visit = (n) => {
@@ -332,7 +339,6 @@ function _previewFitToTurntable(root, label) {
     const worldBounds = (meshes) => {
         let min = null, max = null;
         for (const m of meshes) {
-            if (m.computeWorldMatrix) m.computeWorldMatrix(true);
             const bb = m.getBoundingInfo().boundingBox;
             const lo = bb.minimumWorld, hi = bb.maximumWorld;
             if (!isFinite(lo.x) || !isFinite(hi.x)) continue;
@@ -344,7 +350,7 @@ function _previewFitToTurntable(root, label) {
         return min ? { min, max } : null;
     };
 
-    root.computeWorldMatrix(true);
+    refreshAll(root);
     const meshes = collectMeshes(root);
     if (!meshes.length) { console.warn('[preview] no meshes under', label); return; }
 
@@ -358,14 +364,14 @@ function _previewFitToTurntable(root, label) {
     const factor = target / s1;
     if (factor < 0.001 || factor > 1000) { console.warn('[preview] factor out of range', factor); return; }
     root.scaling.scaleInPlace(factor);
-    root.computeWorldMatrix(true);
+    refreshAll(root);
 
     const b3 = worldBounds(meshes);
     if (!b3) return;
     root.position.x -= (b3.min.x + b3.max.x) / 2;
     root.position.y -= b3.min.y + 0.5;
     root.position.z -= (b3.min.z + b3.max.z) / 2;
-    root.computeWorldMatrix(true);
+    refreshAll(root);
 
     console.log('[preview] fit', label, 'native=', s1.toFixed(2), 'factor=', factor.toFixed(3));
 }
@@ -374,8 +380,9 @@ function _retintPreviewCar(color) {
     if (!_previewBodyMaterials.length) return;
     const target = BABYLON.Color3.FromHexString(color);
     _previewBodyMaterials.forEach(m => {
-        m.diffuseColor = target;
-        m.emissiveColor = target.scale(0.05);
+        if ('albedoColor' in m) m.albedoColor = target;
+        if ('diffuseColor' in m) m.diffuseColor = target;
+        if ('emissiveColor' in m) m.emissiveColor = target.scale(0.05);
     });
 }
 

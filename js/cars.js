@@ -363,16 +363,21 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
     parentNode.scaling = new BABYLON.Vector3(fitScale, fitScale, fitScale);
     refreshAll(parentNode);
 
-    // Lift so lowest vertex sits at parentNode local y=0 (wheels on ground)
+    // Lift so lowest vertex sits at parentNode local y=0 (wheels on ground).
+    // post.min.y is in WORLD space; subtract parentNode.position.y so the
+    // lift is position-independent — physics may have already moved the
+    // parent to a non-zero start Y by the time the async GLB load lands.
     const post = _measureCarBounds(parentNode);
+    let lift = 0;
     if (post && fitScale > 0) {
-        inner.position.y -= post.min.y / fitScale;
+        lift = (post.min.y - parentNode.position.y) / fitScale;
+        inner.position.y -= lift;
         refreshAll(parentNode);
     }
 
     console.log('[cars] fit', modelInfo.file, 'rawMax=', raw ? Math.max(raw.size.x, raw.size.y, raw.size.z).toFixed(2) : '?',
         'fitScale=', fitScale.toFixed(3),
-        'lift=', post ? (-post.min.y / fitScale).toFixed(3) : '?');
+        'lift=', (-lift).toFixed(3));
 
     parentNode.position.y += (modelInfo.yOffset || 0);
     _addHeadlightBeams(parentNode, 2.2 * fitScale, 0.5 * fitScale, 5.5 * fitScale, 0.42 * fitScale);

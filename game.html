@@ -27,6 +27,32 @@
         .menu-btn.secondary{background:rgba(255,255,255,.1);color:#fff;border:2px solid rgba(255,255,255,.2)}
         .menu-btn.secondary:hover{background:rgba(255,255,255,.2);transform:translateY(-2px)}
         .selection-grid{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:15px 0;max-width:850px}
+        .car-strip{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;padding:10px 4px 14px;width:100%;scroll-snap-type:x mandatory;scrollbar-width:thin;scrollbar-color:#ff6b35 rgba(255,255,255,.05)}
+        .car-strip::-webkit-scrollbar{height:6px}
+        .car-strip::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:3px}
+        .car-strip::-webkit-scrollbar-thumb{background:#ff6b35;border-radius:3px}
+        .car-strip .card{flex:0 0 200px;width:200px;padding:10px 12px;scroll-snap-align:center;text-align:center;transition:all .25s}
+        .car-strip .card .card-car{aspect-ratio:7/4;width:100%;margin:0 0 6px}
+        .car-strip .card .card-thumb{aspect-ratio:7/4;width:100%;margin:0 0 6px;object-fit:cover;border-radius:8px;display:block}
+        .car-strip .card .card-title{font-size:14px;font-weight:700;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .car-strip .card .card-desc,.car-strip .card .card-stats{display:none}
+        .car-strip .card.selected{transform:translateY(-4px) scale(1.06);border:2px solid #ff6b35;background:rgba(255,107,53,.22);box-shadow:0 0 0 2px rgba(255,107,53,.35),0 0 32px rgba(255,107,53,.55),0 8px 24px rgba(0,0,0,.45)}
+        .car-strip .card.selected .card-title{color:#ff6b35}
+        .car-stage{display:flex;gap:18px;width:100%;flex:1;align-items:stretch;margin-top:8px;min-height:0}
+        .car-stage-canvas-wrap{flex:3;display:flex;flex-direction:column;min-width:0;position:relative}
+        .car-stage-canvas-wrap::after{content:"";position:absolute;inset:38px 0 0 0;border-radius:16px;pointer-events:none;box-shadow:0 0 0 2px rgba(255,107,53,.45),0 0 60px rgba(255,107,53,.35);animation:selPulse 2.6s ease-in-out infinite}
+        @keyframes selPulse{0%,100%{box-shadow:0 0 0 2px rgba(255,107,53,.4),0 0 36px rgba(255,107,53,.25)}50%{box-shadow:0 0 0 2px rgba(255,107,53,.65),0 0 64px rgba(255,107,53,.55)}}
+        .car-stage-canvas-wrap .car-preview-name{font-size:28px;margin-bottom:8px;font-weight:900;text-shadow:0 0 18px rgba(255,107,53,.6)}
+        .car-stage-canvas-wrap canvas{flex:1;width:100%;min-height:340px;background:radial-gradient(ellipse at center,#1a0e40 0%,#0a0520 45%,#050208 100%);border:1px solid rgba(255,107,53,.25);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.55),0 0 40px rgba(255,107,53,.15),inset 0 1px 0 rgba(255,255,255,.04);touch-action:none;outline:none;display:block;height:auto !important;max-width:none !important}
+        .car-stage-info{flex:1;max-width:340px;background:rgba(255,255,255,.04);border:1px solid rgba(255,107,53,.18);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;backdrop-filter:blur(8px)}
+        .car-stage-desc{color:#aaa;font-size:13px;margin-bottom:14px;font-style:italic}
+        .car-stage-stats{display:flex;flex-direction:column;gap:4px}
+        .car-stage-stats .stat-row{display:flex;align-items:baseline;justify-content:space-between;margin-top:8px}
+        .car-stage-stats .stat-key{color:#aaa;font-size:11px;letter-spacing:2px;text-transform:uppercase}
+        .car-stage-stats .stat-val{color:#ff6b35;font-size:22px;font-weight:900;text-shadow:0 0 12px rgba(255,107,53,.4)}
+        .car-stage-stats .stat-unit{color:#666;font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-left:auto;padding-left:6px}
+        .car-stage-stats .stat-bar{height:5px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin-bottom:2px}
+        @media(max-width:760px){.car-stage{flex-direction:column}.car-stage-canvas-wrap canvas{min-height:220px}.car-strip .card{flex:0 0 110px;width:110px}}
         .card{width:155px;padding:12px;border-radius:12px;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.1);cursor:pointer;transition:all .3s;text-align:center;backdrop-filter:blur(4px)}
         .card:hover{transform:translateY(-5px) scale(1.02);border-color:#ff6b35;background:rgba(255,107,53,.1);box-shadow:0 8px 25px rgba(0,0,0,.3),0 0 15px rgba(255,107,53,.2)}
         .card.selected{border-color:#ff6b35;background:rgba(255,107,53,.2);box-shadow:0 0 25px rgba(255,107,53,.4),0 0 50px rgba(255,107,53,.15)}
@@ -265,19 +291,52 @@
     </div>
     <button class="menu-btn secondary" onclick="showScreen('main-menu')">Back</button>
 </div>
-<div id="car-select" class="screen">
-    <div class="section-title">Choose Your Car</div>
-    <div class="section-subtitle">Pick your ride</div>
-    <div id="car-preview-wrap" style="width:100%;max-width:480px"><div class="car-preview-name" id="car-preview-name"></div><div class="car-preview-label" id="car-preview-label">Tap a car below</div><canvas id="car-preview-canvas"></canvas></div>
-    <div class="selection-grid" id="car-grid"></div>
-    <div><div style="color:#aaa;margin-bottom:8px">Car Color</div><div class="color-picker" id="color-picker"></div></div>
-    <div style="margin-top:20px"><button class="menu-btn primary" onclick="showScreen('track-select')">Next</button><button class="menu-btn secondary" onclick="showScreen('main-menu')">Back</button></div>
+<div id="car-select" class="screen" style="padding:12px 16px;justify-content:flex-start">
+    <div class="section-title" style="margin-bottom:0">Choose Your Car</div>
+    <div class="section-subtitle" style="margin-bottom:10px">Tap a car, then race</div>
+    <div id="car-strip" class="car-strip"></div>
+    <div id="car-stage" class="car-stage">
+        <div class="car-stage-canvas-wrap">
+            <div class="car-preview-name" id="car-preview-name"></div>
+            <canvas id="car-preview-canvas"></canvas>
+        </div>
+        <div class="car-stage-info">
+            <div class="car-stage-desc" id="car-preview-desc"></div>
+            <div class="car-stage-stats">
+                <div class="stat-row"><span class="stat-key">Top Speed</span><span class="stat-val" id="ps-speed">0</span><span class="stat-unit">km/h</span></div>
+                <div class="stat-bar"><div class="stat-fill" id="ps-speed-bar"></div></div>
+                <div class="stat-row"><span class="stat-key">Power</span><span class="stat-val" id="ps-accel">0</span><span class="stat-unit">hp</span></div>
+                <div class="stat-bar"><div class="stat-fill" id="ps-accel-bar"></div></div>
+                <div class="stat-row"><span class="stat-key">Handling</span><span class="stat-val" id="ps-handling">0</span><span class="stat-unit">/100</span></div>
+                <div class="stat-bar"><div class="stat-fill" id="ps-handling-bar"></div></div>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="menu-btn primary" onclick="showScreen('track-select')">Next</button><button class="menu-btn secondary" onclick="showScreen('main-menu')">Back</button></div>
+        </div>
+    </div>
 </div>
-<div id="track-select" class="screen">
-    <div class="section-title">Choose Track</div>
-    <div class="section-subtitle">Where do you want to race?</div>
-    <div class="selection-grid" id="track-grid"></div>
-    <div style="margin-top:20px"><button class="menu-btn primary" onclick="showScreen('race-config')">Next</button><button class="menu-btn secondary" onclick="showScreen('car-select')">Back</button></div>
+<div id="track-select" class="screen" style="padding:12px 16px;justify-content:flex-start">
+    <div class="section-title" style="margin-bottom:0">Choose Track</div>
+    <div class="section-subtitle" style="margin-bottom:10px">Tap a track, then race</div>
+    <div id="track-strip" class="car-strip"></div>
+    <div id="track-stage" class="car-stage">
+        <div class="car-stage-canvas-wrap">
+            <div class="car-preview-name" id="track-preview-name"></div>
+            <canvas id="track-preview-canvas" style="background:radial-gradient(ellipse at center,#1a0e40 0%,#0a0520 45%,#050208 100%);border:1px solid rgba(255,107,53,.25);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.55),0 0 40px rgba(255,107,53,.15);"></canvas>
+        </div>
+        <div class="car-stage-info">
+            <div class="car-stage-desc" id="track-preview-desc"></div>
+            <div class="car-stage-stats">
+                <div class="stat-row"><span class="stat-key">Turns</span><span class="stat-val" id="ts-turns">0</span><span class="stat-unit">corners</span></div>
+                <div class="stat-bar"><div class="stat-fill" id="ts-turns-bar"></div></div>
+                <div class="stat-row"><span class="stat-key">Length</span><span class="stat-val" id="ts-length">0</span><span class="stat-unit">m / lap</span></div>
+                <div class="stat-bar"><div class="stat-fill" id="ts-length-bar"></div></div>
+                <div class="stat-row"><span class="stat-key">Width</span><span class="stat-val" id="ts-width">0</span><span class="stat-unit">m</span></div>
+                <div class="stat-bar"><div class="stat-fill" id="ts-width-bar"></div></div>
+                <div class="stat-row" style="margin-top:14px"><span class="stat-key">Difficulty</span><span id="ts-diff" style="margin-left:auto"></span></div>
+            </div>
+            <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="menu-btn primary" onclick="showScreen('race-config')">Next</button><button class="menu-btn secondary" onclick="showScreen('car-select')">Back</button></div>
+        </div>
+    </div>
 </div>
 <div id="race-config" class="screen">
     <div class="section-title">Race Setup</div>
@@ -291,9 +350,18 @@
 </div>
 <div id="countdown"></div>
 <div id="hud">
-    <div class="hud-panel"><div class="hud-speed" id="hud-speed">0</div><div class="hud-speed-unit">KM/H</div><div id="drift-indicator" style="display:none;color:#ff6b35;font-weight:bold;font-size:14px;margin-top:4px;text-shadow:0 0 8px #ff6b35">DRIFT</div><div style="margin-top:8px"><div class="hud-label">Nitro</div><div class="stat-bar" style="width:120px"><div class="stat-fill" id="nitro-bar" style="width:100%"></div></div></div></div>
+    <div class="hud-panel"><div class="hud-speed" id="hud-speed">0</div><div class="hud-speed-unit">KM/H</div><div id="drift-indicator" style="display:none;color:#ff6b35;font-weight:bold;font-size:14px;margin-top:4px;text-shadow:0 0 8px #ff6b35">DRIFT</div></div>
     <div style="text-align:center"><div class="hud-panel"><div class="hud-label">Lap</div><div class="hud-value hud-lap"><span id="hud-lap">1</span> / <span id="hud-total-laps">3</span></div></div></div>
     <div style="text-align:right"><div class="hud-panel"><div class="hud-label">Position</div><div class="hud-value hud-pos" id="hud-position">1st</div><div style="margin-top:5px"><div class="hud-label">Time</div><div class="hud-value hud-time" id="hud-time">0:00</div></div></div></div>
+</div>
+<div id="big-nitro" style="position:fixed;top:118px;left:50%;transform:translateX(-50%);z-index:55;display:none;width:min(900px,82vw);pointer-events:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <div style="color:#aaa;font-size:11px;letter-spacing:3px;text-transform:uppercase;text-shadow:0 0 4px rgba(0,0,0,.8)">⚡ NITRO</div>
+        <div id="nitro-pct" style="color:#fff;font-size:13px;font-weight:900;text-shadow:0 0 4px rgba(0,0,0,.8)">100%</div>
+    </div>
+    <div style="height:20px;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);border-radius:11px;border:1px solid rgba(255,107,53,.4);overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)">
+        <div id="big-nitro-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#ff6b35 0%,#ff8c42 35%,#f7c948 70%,#00ddff 100%);transition:width .15s ease-out;box-shadow:0 0 20px rgba(255,107,53,.6)"></div>
+    </div>
 </div>
 <div id="positions-panel"></div>
 <div id="controls-help"><span class="control-key">W</span><span class="control-key">A</span><span class="control-key">S</span><span class="control-key">D</span> Move <span class="control-key">Space</span> Brake <span class="control-key">P</span> Drift <span class="control-key">Shift</span> Nitro <span class="control-key">C</span> Camera</div>
@@ -315,20 +383,67 @@
     <button class="menu-btn primary" onclick="quitRace()">Continue</button>
 </div>
 
-<script>window.__V__='20260425a';</script>
-<script src="js/config.js?v=20260425a"></script>
-<script src="js/login.js?v=20260425a"></script>
-<script src="js/sound.js?v=20260425a"></script>
-<script src="js/scene.js?v=20260425a"></script>
-<script src="js/cars.js?v=20260425a"></script>
-<script src="js/track.js?v=20260425a"></script>
-<script src="js/effects.js?v=20260425a"></script>
-<script src="js/hud.js?v=20260425a"></script>
-<script src="js/physics.js?v=20260425a"></script>
-<script src="js/race.js?v=20260425a"></script>
-<script src="js/input.js?v=20260425a"></script>
-<script src="js/touch.js?v=20260425a"></script>
-<script src="js/preview.js?v=20260425a"></script>
+<button id="music-toggle" type="button" title="Toggle music" style="position:fixed;top:14px;right:14px;z-index:99999;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,107,53,.4);background:rgba(0,0,0,.65);color:#ff6b35;font-size:20px;cursor:pointer;backdrop-filter:blur(10px);box-shadow:0 4px 14px rgba(0,0,0,.5);transition:all .2s">🔊</button>
+<script>
+(function _attachMusicToggle() {
+    const btn = document.getElementById('music-toggle');
+    if (!btn) return;
+    const refresh = () => {
+        const muted = (typeof MusicEngine !== 'undefined') ? MusicEngine.isMuted() : false;
+        btn.textContent = muted ? '🔇' : '🔊';
+        btn.style.opacity = muted ? '0.55' : '1';
+    };
+    refresh();
+    btn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (typeof MusicEngine === 'undefined') return;
+        if (!MusicEngine.started) MusicEngine.start();
+        MusicEngine.toggleMuted();
+        refresh();
+    });
+})();
+</script>
+<div id="dbg-overlay" style="display:none"></div>
+<script>
+// Debug overlay updater — shows camera/car positions every frame
+setInterval(() => {
+  try {
+    const dbg = document.getElementById('dbg-overlay');
+    if (!dbg) return;
+    if (typeof camera === 'undefined' || typeof playerCar === 'undefined' || !camera || !playerCar) {
+      dbg.textContent = 'waiting for scene…';
+      return;
+    }
+    const cp = camera.position, pp = playerCar.position;
+    const dx = cp.x - pp.x, dy = cp.y - pp.y, dz = cp.z - pp.z;
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    const ts = (typeof trackPoints !== 'undefined' && trackPoints && trackPoints.length) ? trackPoints[0] : null;
+    const carScale = playerCar.scaling;
+    dbg.textContent =
+      'cam: ' + cp.x.toFixed(1) + ', ' + cp.y.toFixed(1) + ', ' + cp.z.toFixed(1) + '\n' +
+      'car: ' + pp.x.toFixed(1) + ', ' + pp.y.toFixed(1) + ', ' + pp.z.toFixed(1) + '\n' +
+      'cam→car dist: ' + dist.toFixed(1) + 'm  scale: ' + carScale.x.toFixed(4) + '\n' +
+      'track[0]: ' + (ts ? ts.x.toFixed(1) + ', ' + ts.y.toFixed(1) + ', ' + ts.z.toFixed(1) : '?') + '\n' +
+      'meshCount: ' + (typeof scene !== 'undefined' && scene ? scene.meshes.length : '?');
+  } catch(e) {
+    document.getElementById('dbg-overlay').textContent = 'err: ' + e.message;
+  }
+}, 250);
+</script>
+<script>window.__V__='20260503f';</script>
+<script src="js/config.js?v=20260503h"></script>
+<script src="js/login.js?v=20260503h"></script>
+<script src="js/sound.js?v=20260503h"></script>
+<script src="js/scene.js?v=20260503h"></script>
+<script src="js/cars.js?v=20260503h"></script>
+<script src="js/track.js?v=20260503h"></script>
+<script src="js/effects.js?v=20260503h"></script>
+<script src="js/hud.js?v=20260503h"></script>
+<script src="js/physics.js?v=20260503h"></script>
+<script src="js/race.js?v=20260503h"></script>
+<script src="js/input.js?v=20260503h"></script>
+<script src="js/touch.js?v=20260503h"></script>
+<script src="js/preview.js?v=20260503h"></script>
 <!-- Inline code removed — all game logic is in js/ files -->
 <script>
 </script>

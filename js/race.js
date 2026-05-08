@@ -13,6 +13,8 @@ let finishXP = 0;
 
 function startRace() {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    // Duck the menu music while the race plays so engine sounds dominate
+    if (typeof MusicEngine !== 'undefined') MusicEngine.duck(0.25);
     initScene();
 
     // Reset replay state
@@ -144,9 +146,9 @@ function updateCamera(dt) {
 
     if (GameState.cameraMode === 0) {
         // ── Chase cam — cinematic spring physics ──
-        const dist = 6.5 + absSpeed * 0.045;
-        const height = 2.5 + absSpeed * 0.014;
-        const lookAhead = 7 + absSpeed * 0.1;
+        const dist = 5 + absSpeed * 0.025;
+        const height = 2.0 + absSpeed * 0.010;
+        const lookAhead = 6 + absSpeed * 0.08;
 
         let targetX = carPos.x - fwdX * dist;
         let targetY = carPos.y + height;
@@ -456,6 +458,7 @@ function quitRace() {
     GameState.paused = false;
     replayMode = false;
     SoundEngine.stop();
+    if (typeof MusicEngine !== 'undefined') MusicEngine.unduck();
 
     if (engine) engine.stopRenderLoop();
 

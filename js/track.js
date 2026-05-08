@@ -14,19 +14,75 @@ function trackRand() {
 function trackRandRange(a, b) { return a + trackRand() * (b - a); }
 
 // Generate track with Catmull-Rom smoothing for silky curves
+// Per-track shape: hash the track name into a deterministic set of harmonic
+// frequencies, amplitudes and phases so every track has its own silhouette.
+// Identical implementation in login.js, preview.js, trackview.html — KEEP IN
+// SYNC, otherwise the visual preview won't match the physics path.
+// Tracks with a baked-in trackModel GLB use the legacy 3-lobe shape so the
+// physics curve still matches what's in their pre-exported model.
+function _trackShape(trackDef) {
+    if (trackDef.trackModel) {
+        return { h1: 3, h2: 5, ph1: 0, ph2: 0, a1: 60, a2: 30,
+                 h3: 1, ph3a: 0, a3: 0, xScale: 1, zScale: 1, rot: 0, ph3: 0 };
+    }
+    let h = 0;
+    const n = trackDef.name || '';
+    for (let i = 0; i < n.length; i++) h = ((h * 31) + n.charCodeAt(i)) | 0;
+    h = h >>> 0;
+    return {
+        h1: 2 + (h & 7),                  // primary lobes 2-9
+        h2: 3 + ((h >> 3) & 7),           // secondary lobes 3-10
+        h3: 1 + ((h >> 26) & 1),          // soft 1× or 2× wave for asymmetry
+        ph1: ((h >> 6) & 15) * 0.4,       // primary phase
+        ph2: ((h >> 10) & 15) * 0.4,      // secondary phase
+        ph3a: ((h >> 24) & 7) * 0.7,      // tertiary phase
+        a1: 30 + ((h >> 14) & 31),        // primary amplitude 30-61
+        a2: 15 + ((h >> 19) & 23),        // secondary 15-37
+        a3: 20 + ((h >> 27) & 15),        // tertiary 20-35 — pulls shape off-circle
+        xScale: 0.7 + ((h >> 16) & 7) * 0.10,  // 0.70..1.40 horizontal stretch
+        zScale: 0.7 + ((h >> 28) & 7) * 0.10,  // 0.70..1.40 vertical stretch
+        rot: ((h >> 12) & 7) * (Math.PI / 4),  // 0..7×45° rotation
+        ph3: ((h >> 22) & 15) * 0.5,           // height-curve phase (back-compat)
+    };
+}
+
 function generateTrack(trackDef) {
     // Generate coarse control points
     const coarse = [];
     const n = trackDef.segments;
     const radius = 200;
-    for (let i = 0; i < n; i++) {
-        const t = i / n * Math.PI * 2;
-        const wiggle = Math.sin(t * 3) * trackDef.maxCurve * 60 + Math.cos(t * 5) * trackDef.maxCurve * 30;
-        const r = radius + wiggle;
-        const x = Math.cos(t) * r;
-        const z = Math.sin(t) * r;
-        const y = Math.sin(t * 2) * trackDef.hills * 15 + Math.cos(t * 4) * trackDef.hills * 8;
-        coarse.push(new BABYLON.Vector3(x, Math.max(y, 0.5), z));
+    const sh = _trackShape(trackDef);
+    const cr = Math.cos(sh.rot), sr = Math.sin(sh.rot);
+
+    // F1-inspired hand-encoded track shapes win when available (and the
+    // track isn't using a baked GLB). The shape's coarse points are used
+    // directly; segments / maxCurve no longer drive the silhouette.
+    const f1 = (typeof F1_TRACK_SHAPES !== 'undefined')
+        ? F1_TRACK_SHAPES[trackDef.name] : null;
+    if (f1 && f1.length >= 6) {
+        const fr = (typeof F1_TRACK_RADIUS !== 'undefined') ? F1_TRACK_RADIUS : radius;
+        for (let i = 0; i < f1.length; i++) {
+            const [nx, nz] = f1[i];
+            const x = nx * fr;
+            const z = nz * fr;
+            const t = i / f1.length * Math.PI * 2;
+            const y = Math.sin(t * 2 + sh.ph3) * trackDef.hills * 15 + Math.cos(t * 4) * trackDef.hills * 8;
+            coarse.push(new BABYLON.Vector3(x, Math.max(y, 0.5), z));
+        }
+    } else {
+        for (let i = 0; i < n; i++) {
+            const t = i / n * Math.PI * 2;
+            const wiggle = Math.sin(t * sh.h1 + sh.ph1) * trackDef.maxCurve * sh.a1
+                         + Math.cos(t * sh.h2 + sh.ph2) * trackDef.maxCurve * sh.a2
+                         + Math.sin(t * sh.h3 + sh.ph3a) * trackDef.maxCurve * sh.a3;
+            const r = radius + wiggle;
+            const ux = Math.cos(t) * r * sh.xScale;
+            const uz = Math.sin(t) * r * sh.zScale;
+            const x = ux * cr - uz * sr;
+            const z = ux * sr + uz * cr;
+            const y = Math.sin(t * 2 + sh.ph3) * trackDef.hills * 15 + Math.cos(t * 4) * trackDef.hills * 8;
+            coarse.push(new BABYLON.Vector3(x, Math.max(y, 0.5), z));
+        }
     }
 
     // Catmull-Rom interpolation for smooth curves (4x subdivision)
@@ -731,6 +787,7 @@ function addScenery(trackDef) {
     const isSnow = name === 'Snow Peak' || name === 'Thunder Mountain';
     const isTropical = name === 'Tropical Island';
     const isCoastal = name === 'Coastal Drive';
+    const isSunny = name === 'Sunny Valley';
     const isNight = trackDef.skyColor === 0x0a0a2e || trackDef.skyColor === 0x050515 || trackDef.skyColor === 0x331111;
     const up = new BABYLON.Vector3(0, 1, 0);
 
@@ -760,6 +817,7 @@ function addScenery(trackDef) {
                       isSnow ? [0.90, 0.91, 0.94] :
                       isCity ? [0.12, 0.12, 0.18] :
                       isTropical ? [0.25, 0.58, 0.30] :
+                      isSunny ? [0.10, 0.38, 0.72] : // BLUE water for Sunny Valley
                       [0.32, 0.56, 0.22]; // softer grass green
 
     // Noise helper — multi-octave value noise from sin/cos
@@ -837,18 +895,35 @@ function addScenery(trackDef) {
         cg += grass;
         cb += grass * 0.1;
 
-        // Height-based coloring — lower=richer green, higher=yellower/browner
-        const heightBlend = Math.max(0, Math.min(1, (h - 2) / 20));
-        cr += heightBlend * 0.08;
-        cg -= heightBlend * 0.03;
-        cb -= heightBlend * 0.04;
+        // Height-based coloring
+        if (isSnow) {
+            // Snow caps: dark rocky base → bright snow at higher elevations
+            const snowBlend = Math.max(0, Math.min(1, (h - 5) / 35));
+            const snowAmt = Math.pow(snowBlend, 0.7);
+            cr = cr * (1 - snowAmt) + 1.0 * snowAmt;
+            cg = cg * (1 - snowAmt) + 1.0 * snowAmt;
+            cb = cb * (1 - snowAmt) + 1.04 * snowAmt;
+            // Slight darkening at very low elevations for rocky patches
+            if (h < 3) {
+                cr *= 0.7; cg *= 0.72; cb *= 0.78;
+            }
+        } else {
+            // Lower=richer green, higher=yellower/browner
+            const heightBlend = Math.max(0, Math.min(1, (h - 2) / 20));
+            cr += heightBlend * 0.08;
+            cg -= heightBlend * 0.03;
+            cb -= heightBlend * 0.04;
+        }
 
         // Slope darkening — steeper areas are darker (approximate from height neighbors)
-        // Use local height gradient as proxy for slope
-        const slopeProxy = Math.abs(terrainNoise(x, z, 0.05, 2)) * 0.06;
-        cr -= slopeProxy;
-        cg -= slopeProxy * 0.8;
-        cb -= slopeProxy * 0.5;
+        // Use local height gradient as proxy for slope. Skip for snow so peaks
+        // stay bright white.
+        if (!isSnow) {
+            const slopeProxy = Math.abs(terrainNoise(x, z, 0.05, 2)) * 0.06;
+            cr -= slopeProxy;
+            cg -= slopeProxy * 0.8;
+            cb -= slopeProxy * 0.5;
+        }
 
         // Road shoulder — dirt/gravel transition
         if (minDist < trackHW + 20 && !isCity) {
@@ -862,6 +937,11 @@ function addScenery(trackDef) {
                 cr += sb2 * 0.05;
                 cg += sb2 * 0.05;
                 cb += sb2 * 0.05;
+            } else if (isSunny) {
+                // Sunny Valley: river / blue water along the roadside
+                cr = cr * (1 - sb2) + 0.10 * sb2;
+                cg = cg * (1 - sb2) + 0.38 * sb2;
+                cb = cb * (1 - sb2) + 0.72 * sb2;
             } else {
                 // Worn grass/dirt
                 cr += sb2 * 0.12;
@@ -1014,6 +1094,131 @@ function addScenery(trackDef) {
     }
     if (name === 'Volcano Ring') {
         createEmberParticles();
+        addVolcanoCrater(trackDef);
+    }
+    if (name === 'Snow Peak') {
+        addCentralMountain(trackDef);
+    }
+}
+
+// ── Volcano Ring: tall crater walls that encircle the track + lava pools.
+function addVolcanoCrater(trackDef) {
+    const up = new BABYLON.Vector3(0, 1, 0);
+
+    // Outer crater wall — tall cylindrical "rim" surrounding the track
+    // Track radius ~200, so we put the wall at ~340 with height ~80
+    const wall = BABYLON.MeshBuilder.CreateCylinder(tuid("craterWall"), {
+        diameterTop: 700,
+        diameterBottom: 820,
+        height: 100,
+        tessellation: 64,
+        sideOrientation: BABYLON.Mesh.DOUBLESIDE
+    }, scene);
+    wall.position.y = 30;
+    const wallMat = new BABYLON.StandardMaterial(tuid("craterWallMat"), scene);
+    wallMat.diffuseColor = new BABYLON.Color3(0.18, 0.10, 0.08);
+    wallMat.specularColor = new BABYLON.Color3(0.05, 0.04, 0.04);
+    wallMat.emissiveColor = new BABYLON.Color3(0.05, 0.02, 0.01);
+    wallMat.backFaceCulling = false;
+    wall.material = wallMat;
+    wall.receiveShadows = true;
+
+    // Glowing lava strip running around the inside base of the wall
+    const lavaRing = BABYLON.MeshBuilder.CreateTorus(tuid("lavaRing"), {
+        diameter: 700, thickness: 12, tessellation: 64
+    }, scene);
+    lavaRing.position.y = 0.5;
+    const lavaMat = new BABYLON.StandardMaterial(tuid("lavaMat"), scene);
+    lavaMat.disableLighting = true;
+    lavaMat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+    lavaMat.emissiveColor = new BABYLON.Color3(1.0, 0.32, 0.05);
+    lavaRing.material = lavaMat;
+
+    // Pulsing emissive for that "alive" lava look
+    scene.registerBeforeRender(() => {
+        if (lavaRing.isDisposed()) return;
+        const t = performance.now() * 0.002;
+        const pulse = 0.85 + Math.sin(t) * 0.15;
+        lavaMat.emissiveColor.set(1.0 * pulse, 0.32 * pulse, 0.05 * pulse);
+    });
+
+    // Scatter glowing lava pools at random spots inside the crater
+    _trackSeed = 7777;
+    for (let i = 0; i < 8; i++) {
+        const ang = trackRand() * Math.PI * 2;
+        const r = 240 + trackRand() * 80;
+        const px = Math.cos(ang) * r, pz = Math.sin(ang) * r;
+        const pool = BABYLON.MeshBuilder.CreateDisc(tuid("lavaPool"), {
+            radius: 8 + trackRand() * 12, tessellation: 24
+        }, scene);
+        pool.rotation.x = -Math.PI / 2;
+        pool.position = new BABYLON.Vector3(px, 0.3, pz);
+        pool.material = lavaMat;
+    }
+}
+
+// ── Snow Peak: a giant snowy mountain rising from the centre of the track.
+function addCentralMountain(trackDef) {
+    // The track loop sits at radius ~200; put the mountain inside it.
+    // Tall enough to be seen from anywhere on the track.
+    const mountainH = 380;
+    const mountain = BABYLON.MeshBuilder.CreateCylinder(tuid("centralPeak"), {
+        diameterTop: 8,         // sharp peak
+        diameterBottom: 320,    // wide base
+        height: mountainH,
+        tessellation: 64,
+        sideOrientation: BABYLON.Mesh.DEFAULTSIDE
+    }, scene);
+    mountain.position.set(0, mountainH / 2, 0);
+
+    // Vertex-color the mountain: dark rock at base → bright snow above
+    const positions = mountain.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+    const colors = [];
+    for (let i = 0; i < positions.length; i += 3) {
+        const localY = positions[i + 1]; // -mH/2 (base) .. +mH/2 (top)
+        const t = (localY + mountainH / 2) / mountainH; // 0 at base, 1 at peak
+        // Sharp snowline at ~30% up the mountain — looks more dramatic
+        const snowLine = 0.3;
+        const snow = Math.max(0, Math.min(1, (t - snowLine) / (1 - snowLine)));
+        const snowAmt = Math.pow(snow, 0.5);
+        const noise = (Math.sin(positions[i] * 0.4) + Math.cos(positions[i + 2] * 0.4)) * 0.04;
+        const baseR = 0.30, baseG = 0.30, baseB = 0.34;
+        const snowR = 0.98, snowG = 0.99, snowB = 1.0;
+        const r = baseR + (snowR - baseR) * snowAmt + noise;
+        const g = baseG + (snowG - baseG) * snowAmt + noise;
+        const b = baseB + (snowB - baseB) * snowAmt + noise;
+        colors.push(
+            Math.max(0, Math.min(1, r)),
+            Math.max(0, Math.min(1, g)),
+            Math.max(0, Math.min(1, b)),
+            1
+        );
+    }
+    mountain.setVerticesData(BABYLON.VertexBuffer.ColorKind, colors);
+    const peakMat = new BABYLON.StandardMaterial(tuid("centralPeakMat"), scene);
+    peakMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
+    peakMat.emissiveColor = new BABYLON.Color3(0.05, 0.06, 0.08); // subtle ambient lift so snow isn't muddy at distance
+    peakMat.specularColor = new BABYLON.Color3(0.25, 0.28, 0.35);
+    peakMat.specularPower = 32;
+    mountain.material = peakMat;
+    mountain.receiveShadows = true;
+
+    // A few smaller foothill rings around the central mountain
+    for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2 + 0.4;
+        const dist = 145 + Math.sin(i * 1.3) * 8;
+        const hill = BABYLON.MeshBuilder.CreateCylinder(tuid("foothill"), {
+            diameterTop: 4,
+            diameterBottom: 38 + (i % 3) * 8,
+            height: 35 + (i % 2) * 8,
+            tessellation: 24,
+        }, scene);
+        hill.position.set(Math.cos(ang) * dist, 17, Math.sin(ang) * dist);
+        const hillMat = new BABYLON.StandardMaterial(tuid("foothillMat"), scene);
+        hillMat.diffuseColor = new BABYLON.Color3(0.85, 0.88, 0.94);
+        hillMat.specularColor = new BABYLON.Color3(0.12, 0.12, 0.15);
+        hill.material = hillMat;
+        hill.receiveShadows = true;
     }
 }
 
@@ -1115,6 +1320,16 @@ function addSponsorBanners(trackDef) {
 
         const bpos = p.add(right.scale(side * (hw + 6)));
 
+        // Billboard should face the ROAD (not point along the track). The
+        // plane's default normal is +Z; we rotate it so the normal points
+        // back toward the track centre. inwardX/Z is the unit vector from
+        // billboard → track point.
+        const inwardX = -right.x * side;
+        const inwardZ = -right.z * side;
+        const faceY = Math.atan2(inwardX, inwardZ);
+        // Tiny outward bias so the layered planes don't z-fight
+        const outX = -inwardX, outZ = -inwardZ;
+
         // Main billboard background
         const billboard = BABYLON.MeshBuilder.CreatePlane(tuid("billboard"), {
             width: 10, height: 3.2
@@ -1126,7 +1341,7 @@ function addSponsorBanners(trackDef) {
         billMat.backFaceCulling = false;
         billboard.material = billMat;
         billboard.position = new BABYLON.Vector3(bpos.x, p.y + 3.2, bpos.z);
-        billboard.rotation.y = Math.atan2(dir.x, dir.z);
+        billboard.rotation.y = faceY;
 
         // Brand name text area (accent color bar)
         const nameBar = BABYLON.MeshBuilder.CreatePlane(tuid("nameBar"), {
@@ -1137,8 +1352,10 @@ function addSponsorBanners(trackDef) {
         nameBarMat.emissiveColor = new BABYLON.Color3(sp.accent[0] * emScale * 1.5, sp.accent[1] * emScale * 1.5, sp.accent[2] * emScale * 1.5);
         nameBarMat.backFaceCulling = false;
         nameBar.material = nameBarMat;
-        nameBar.position = new BABYLON.Vector3(bpos.x + dir.x * 0.02, p.y + 3.5, bpos.z + dir.z * 0.02);
-        nameBar.rotation.y = Math.atan2(dir.x, dir.z);
+        // Push the foreground layers slightly toward the road so they sit in
+        // front of the background plane (no z-fighting with the frame behind).
+        nameBar.position = new BABYLON.Vector3(bpos.x + inwardX * 0.04, p.y + 3.5, bpos.z + inwardZ * 0.04);
+        nameBar.rotation.y = faceY;
 
         // Subtitle strip
         const subStrip = BABYLON.MeshBuilder.CreatePlane(tuid("subStrip"), {
@@ -1149,8 +1366,8 @@ function addSponsorBanners(trackDef) {
         subMat.emissiveColor = new BABYLON.Color3(sp.text[0] * emScale * 0.5, sp.text[1] * emScale * 0.5, sp.text[2] * emScale * 0.5);
         subMat.backFaceCulling = false;
         subStrip.material = subMat;
-        subStrip.position = new BABYLON.Vector3(bpos.x + dir.x * 0.03, p.y + 2.3, bpos.z + dir.z * 0.03);
-        subStrip.rotation.y = Math.atan2(dir.x, dir.z);
+        subStrip.position = new BABYLON.Vector3(bpos.x + inwardX * 0.05, p.y + 2.3, bpos.z + inwardZ * 0.05);
+        subStrip.rotation.y = faceY;
 
         // Billboard frame (dark border)
         const frame = BABYLON.MeshBuilder.CreatePlane(tuid("billFrame"), {
@@ -1160,8 +1377,8 @@ function addSponsorBanners(trackDef) {
         frameMat.diffuseColor = new BABYLON.Color3(0.15, 0.15, 0.15);
         frameMat.backFaceCulling = false;
         frame.material = frameMat;
-        frame.position = new BABYLON.Vector3(bpos.x - dir.x * 0.03, p.y + 3.2, bpos.z - dir.z * 0.03);
-        frame.rotation.y = Math.atan2(dir.x, dir.z);
+        frame.position = new BABYLON.Vector3(bpos.x + outX * 0.03, p.y + 3.2, bpos.z + outZ * 0.03);
+        frame.rotation.y = faceY;
 
         // Steel support poles
         const poleMat = new BABYLON.StandardMaterial(tuid("billPoleMat"), scene);
@@ -1255,9 +1472,12 @@ function addTrackEdgeVegetation(trackDef, isSnow) {
     const n = trackPoints.length;
     const hw = trackDef.trackWidth / 2;
     const up = new BABYLON.Vector3(0, 1, 0);
+    const isSunnyV = trackDef.name === 'Sunny Valley';
 
     // Merge tufts into batches
-    const grassColor = isSnow ? new BABYLON.Color3(0.55, 0.6, 0.5) : new BABYLON.Color3(0.2, 0.55, 0.15);
+    const grassColor = isSnow ? new BABYLON.Color3(0.55, 0.6, 0.5)
+                     : isSunnyV ? new BABYLON.Color3(0.10, 0.40, 0.72)  // blue water
+                     : new BABYLON.Color3(0.2, 0.55, 0.15);
     const grassMat = new BABYLON.StandardMaterial(tuid("grassMat"), scene);
     grassMat.diffuseColor = grassColor;
     grassMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
@@ -1265,9 +1485,9 @@ function addTrackEdgeVegetation(trackDef, isSnow) {
     grassMat.backFaceCulling = false;
 
     const bushMat = new BABYLON.StandardMaterial(tuid("bushMat"), scene);
-    bushMat.diffuseColor = isSnow ?
-        new BABYLON.Color3(0.3, 0.42, 0.25) :
-        new BABYLON.Color3(0.12, 0.4, 0.1);
+    bushMat.diffuseColor = isSnow ? new BABYLON.Color3(0.3, 0.42, 0.25)
+                       : isSunnyV ? new BABYLON.Color3(0.06, 0.28, 0.55)
+                       : new BABYLON.Color3(0.12, 0.4, 0.1);
     bushMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
 
     _trackSeed = 3456;
@@ -2040,18 +2260,23 @@ function addDesertScenery(trackDef) {
 // ── Blue water bodies on every map ──
 function addWaterBodies(trackDef, isCity, isDesert, isSnow) {
     const waterMat = new BABYLON.StandardMaterial(tuid("waterMat"), scene);
-    waterMat.diffuseColor = new BABYLON.Color3(0.05, 0.18, 0.45);
-    waterMat.specularColor = new BABYLON.Color3(0.6, 0.7, 0.9);
-    waterMat.specularPower = 90;
-    waterMat.alpha = 0.82;
-    waterMat.emissiveColor = new BABYLON.Color3(0.01, 0.05, 0.12);
+    // Disable lighting so the hemispheric light's green ground-tint doesn't
+    // mix in. The water sits as a flat horizontal disc — without this, it
+    // either picks up sky blue (if normal up) or green ground (if normal
+    // down) depending on rotation winding, and reads as muddy green.
+    waterMat.disableLighting = true;
+    waterMat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+    waterMat.emissiveColor = new BABYLON.Color3(0.10, 0.38, 0.72);
+    waterMat.specularColor = new BABYLON.Color3(0.7, 0.85, 1.0);
+    waterMat.specularPower = 110;
+    waterMat.alpha = 1.0;
     waterMat.backFaceCulling = false;
     if (scene.environmentTexture) {
         waterMat.reflectionTexture = scene.environmentTexture;
-        waterMat.reflectionTexture.level = 0.35;
+        waterMat.reflectionTexture.level = 0.45;
         waterMat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
-        waterMat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.4, 0.5, 0.7);
-        waterMat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.02, 0.04, 0.08);
+        waterMat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.55, 0.7, 0.95);
+        waterMat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.05, 0.12, 0.28);
         waterMat.reflectionFresnelParameters.power = 2;
         waterMat.reflectionFresnelParameters.bias = 0.1;
     }
@@ -2071,15 +2296,17 @@ function addWaterBodies(trackDef, isCity, isDesert, isSnow) {
             radius: radius, tessellation: 32
         }, scene);
         water.material = waterMat;
-        water.rotation.x = Math.PI / 2;
+        // -π/2 so the disc's normal points UP — important for the env
+        // reflection fresnel to face the sky correctly.
+        water.rotation.x = -Math.PI / 2;
         water.position = new BABYLON.Vector3(wx, 0.1, wz);
 
-        // Animate gentle wave shimmer
+        // Subtle specular shimmer (no alpha animation — we keep it opaque)
         water._wavePhase = trackRand() * Math.PI * 2;
         scene.registerBeforeRender(() => {
             if (water.isDisposed()) return;
             const t = performance.now() * 0.001;
-            waterMat.alpha = 0.78 + Math.sin(t * 0.8 + water._wavePhase) * 0.04;
+            waterMat.specularPower = 100 + Math.sin(t * 0.8 + water._wavePhase) * 15;
         });
     }
 }

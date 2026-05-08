@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>GLB Test</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #222; color: #fff; font-family: monospace; }
+  canvas { width: 100%; height: 80vh; display: block; }
+  #log { padding: 10px; font-size: 13px; white-space: pre-wrap; height: 20vh; overflow: auto; }
+  select { margin: 5px; padding: 5px; }
+</style>
+</head>
+<body>
+<div>
+  <label>Model:</label>
+  <select id="model">
+    <option value="models/toyota-supra-mk4.glb">toyota-supra-mk4 (NEW)</option>
+    <option value="models/bugatti-chiron.glb">bugatti-chiron (NEW)</option>
+    <option value="models/ferrari-f40.glb">ferrari-f40 (existing, works)</option>
+    <option value="models/nissan-gtr.glb">nissan-gtr (existing, works)</option>
+  </select>
+  <button id="load">Load</button>
+</div>
+<canvas id="c"></canvas>
+<div id="log">Logs will appear here…</div>
+
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+<script>
+const log = (...args) => {
+  const s = args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ');
+  console.log(s);
+  document.getElementById('log').textContent += s + '\n';
+};
+
+const canvas = document.getElementById('c');
+const engine = new BABYLON.Engine(canvas, true);
+const scene = new BABYLON.Scene(engine);
+scene.clearColor = new BABYLON.Color4(0.15, 0.15, 0.2, 1);
+
+const camera = new BABYLON.ArcRotateCamera('cam', Math.PI / 4, Math.PI / 3, 8, BABYLON.Vector3.Zero(), scene);
+camera.attachControl(canvas, true);
+camera.lowerRadiusLimit = 1; camera.upperRadiusLimit = 50;
+
+new BABYLON.HemisphericLight('hl', new BABYLON.Vector3(0, 1, 0), scene);
+const dl = new BABYLON.DirectionalLight('dl', new BABYLON.Vector3(-1, -2, -1), scene);
+dl.intensity = 0.7;
+
+const ground = BABYLON.MeshBuilder.CreateGround('g', { width: 20, height: 20 }, scene);
+const gm = new BABYLON.StandardMaterial('gm', scene);
+gm.diffuseColor = new BABYLON.Color3(0.3, 0.3, 0.35);
+ground.material = gm;
+
+let currentRoot = null;
+
+document.getElementById('load').onclick = () => {
+  document.getElementById('log').textContent = '';
+  if (currentRoot) currentRoot.dispose(false, true);
+  currentRoot = null;
+  const file = document.getElementById('model').value;
+  const slash = file.lastIndexOf('/');
+  const root = file.substring(0, slash + 1);
+  const name = file.substring(slash + 1);
+  log('Loading', file, '...');
+  const t0 = performance.now();
+  BABYLON.SceneLoader.ImportMesh('', root, name, scene, (meshes) => {
+    const t = (performance.now() - t0).toFixed(0);
+    log('Loaded in', t, 'ms — meshes:', meshes.length);
+
+    // Find the topmost transform/mesh — that's our root
+    const top = meshes.find(m => !m.parent || !meshes.includes(m.parent)) || meshes[0];
+    currentRoot = top;
+    log('Top node:', top.name, 'class:', top.getClassName());
+
+    // Compute world bounds
+    let min = null, max = null;
+    meshes.forEach(m => {
+      if (m.getClassName && m.getClassName() !== 'TransformNode' && m.getBoundingInfo) {
+        m.computeWorldMatrix(true);
+        const bb = m.getBoundingInfo().boundingBox;
+        if (!min) { min = bb.minimumWorld.clone(); max = bb.maximumWorld.clone(); }
+        else { min.minimizeInPlace(bb.minimumWorld); max.maximizeInPlace(bb.maximumWorld); }
+      }
+    });
+    if (min) {
+      const size = max.subtract(min);
+      log('World bounds min:', min.x.toFixed(2), min.y.toFixed(2), min.z.toFixed(2));
+      log('World bounds max:', max.x.toFixed(2), max.y.toFixed(2), max.z.toFixed(2));
+      log('Size XYZ:', size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2));
+      const longest = Math.max(size.x, size.y, size.z);
+      const fitScale = 3.2 / longest;
+      log('Longest axis:', longest.toFixed(2), '→ fitScale:', fitScale.toFixed(5));
+
+      // Fit camera and scale model
+      top.scaling = new BABYLON.Vector3(fitScale, fitScale, fitScale);
+      top.position.y = -min.y * fitScale; // wheels on ground
+      camera.target = new BABYLON.Vector3(0, 1, 0);
+      camera.radius = 8;
+    }
+  }, null, (scene, msg, ex) => {
+    log('LOAD FAILED:', msg, ex && ex.message);
+  });
+};
+
+engine.runRenderLoop(() => scene.render());
+window.addEventListener('resize', () => engine.resize());
+
+// Auto-load first option
+document.getElementById('load').click();
+</script>
+</body>
+</html>

@@ -255,6 +255,7 @@ function updatePlayer(dt) {
         playerCar.wheels.forEach(w => { w.rotation.x += absSpeed * dt * 3; });
     }
     checkCollisions();
+    if (typeof updateNitroPickups === 'function') updateNitroPickups(dt);
 }
 
 function checkCollisions() {

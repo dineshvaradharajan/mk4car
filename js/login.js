@@ -4,12 +4,40 @@
 let currentUser = null;
 let isSignupMode = false;
 
+// Users live on the server (users.json). They're shared across every origin
+// that hits the same backend — localhost AND tunneled URLs (loca.lt etc.)
+// because the tunnel just forwards to the same Python server. Falls back to
+// localStorage if the API is unreachable so offline edits still work.
+async function getUsersAsync() {
+    try {
+        const r = await fetch('/api/users', { cache: 'no-store' });
+        if (!r.ok) throw new Error('api');
+        return await r.json();
+    } catch(e) {
+        try { return JSON.parse(localStorage.getItem('mk4racer_users')) || {}; } catch(_) { return {}; }
+    }
+}
+
+async function saveUsersAsync(users) {
+    try {
+        await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(users),
+        });
+    } catch(e) { /* fall through to localStorage backup */ }
+    // Keep a localStorage cache for offline / fallback
+    try { localStorage.setItem('mk4racer_users', JSON.stringify(users)); } catch(_) {}
+}
+
+// Sync wrappers for the rest of the code that still expects sync
 function getUsers() {
     try { return JSON.parse(localStorage.getItem('mk4racer_users')) || {}; } catch(e) { return {}; }
 }
-
 function saveUsers(users) {
-    localStorage.setItem('mk4racer_users', JSON.stringify(users));
+    try { localStorage.setItem('mk4racer_users', JSON.stringify(users)); } catch(_) {}
+    // Fire-and-forget save to backend
+    saveUsersAsync(users);
 }
 
 function simpleHash(str) {
@@ -44,7 +72,7 @@ function switchTab(tab) {
     document.getElementById('login-error').textContent = '';
 }
 
-function handleLogin() {
+async function handleLogin() {
     const username = document.getElementById('login-username').value.trim().toLowerCase();
     const password = document.getElementById('login-password').value;
     const errorEl = document.getElementById('login-error');
@@ -54,7 +82,9 @@ function handleLogin() {
     if (!password || password.length < 3) { errorEl.textContent = 'Password must be at least 3 characters'; return; }
     if (!/^[a-z0-9_]+$/.test(username)) { errorEl.textContent = 'Username: letters, numbers, underscore only'; return; }
 
-    const users = getUsers();
+    // Always fetch the latest from the backend so accounts created on a
+    // different origin are visible here too.
+    const users = await getUsersAsync();
     const passHash = simpleHash(password);
 
     if (isSignupMode) {
@@ -62,7 +92,7 @@ function handleLogin() {
         if (password !== confirm) { errorEl.textContent = 'Passwords do not match!'; return; }
         if (users[username]) { errorEl.textContent = 'Username already taken!'; return; }
         users[username] = { passHash, xp: 0, wins: 0, created: Date.now() };
-        saveUsers(users);
+        await saveUsersAsync(users);
         loginAs(username, users[username]);
     } else {
         if (!users[username]) { errorEl.textContent = 'User not found. Sign up first!'; return; }
@@ -77,7 +107,17 @@ function loginAs(username, data) {
     GameState.wins = data.wins || 0;
     localStorage.setItem('mk4racer_lastuser', username);
     updateUserBadge();
-    showScreen('main-menu');
+
+    // Restore last selection (car/track/etc.) and screen
+    try {
+        const saved = JSON.parse(localStorage.getItem('mk4racer_state'));
+        if (saved) Object.assign(GameState, saved);
+    } catch(e) {}
+    let last = null;
+    try { last = localStorage.getItem('mk4racer_lastScreen'); } catch(e) {}
+    const valid = last && document.getElementById(last)
+        && last !== 'login-screen' && last !== 'pause-screen';
+    showScreen(valid ? last : 'main-menu');
 }
 
 function updateUserBadge() {
@@ -100,16 +140,13 @@ function logout() {
     document.getElementById('login-screen').classList.add('active');
 }
 
-// Auto-login last user
-(function autoLogin() {
+// Auto-login last user — checks the backend so a session started on a
+// different origin still works here.
+(async function autoLogin() {
     const lastUser = localStorage.getItem('mk4racer_lastuser');
-    if (lastUser) {
-        const users = getUsers();
-        if (users[lastUser]) {
-            loginAs(lastUser, users[lastUser]);
-            return;
-        }
-    }
+    if (!lastUser) return;
+    const users = await getUsersAsync();
+    if (users[lastUser]) loginAs(lastUser, users[lastUser]);
 })();
 
 // Allow Enter key to submit login
@@ -144,18 +181,60 @@ function getLevel() {
 function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(id).classList.add('active');
+    // Remember last menu screen + selection state so a refresh lands the
+    // user back where they were. Skip pause / login (those are transient or
+    // determined by auth) and race itself (which doesn't go through here).
+    if (id !== 'login-screen' && id !== 'pause-screen') {
+        try { localStorage.setItem('mk4racer_lastScreen', id); } catch(e) {}
+        try {
+            localStorage.setItem('mk4racer_state', JSON.stringify({
+                selectedCar: GameState.selectedCar,
+                selectedTrack: GameState.selectedTrack,
+                selectedColor: GameState.selectedColor,
+                difficulty: GameState.difficulty,
+                laps: GameState.laps,
+                opponents: GameState.opponents,
+            }));
+        } catch(e) {}
+    }
     if (id === 'main-menu') updateMainMenu();
     if (id === 'car-select') buildCarSelect();
     if (id === 'track-select') buildTrackSelect();
     if (id === 'race-config') buildRaceConfig();
 
-    // Spin up / tear down the 3D preview alongside the car-select screen
+    // Spin up / tear down the 3D previews alongside their screens
     if (id === 'car-select') {
         if (typeof initCarPreview === 'function') initCarPreview();
     } else {
         if (typeof disposeCarPreview === 'function') disposeCarPreview();
     }
+    if (id === 'track-select') {
+        if (typeof initTrackPreview === 'function') initTrackPreview();
+    } else {
+        if (typeof disposeTrackPreview === 'function') disposeTrackPreview();
+    }
+
+    // Hype music: only un-duck here. The actual start happens on the first
+    // user interaction (browsers block audio contexts before any user gesture,
+    // so calling start() during DOMContentLoaded would create a suspended
+    // context that never plays anything).
+    if (typeof MusicEngine !== 'undefined' && MusicEngine.started) {
+        if (id === 'main-menu' || id === 'car-select' || id === 'track-select' || id === 'race-config' || id === 'how-to-play') {
+            MusicEngine.unduck();
+        }
+    }
 }
+
+// Start the music on the first user interaction. We keep listening so that if
+// the browser ever auto-suspends the context (some Safari versions do), the
+// next interaction will resume it.
+(function _attachMusicAutoStart() {
+    const kick = () => {
+        if (typeof MusicEngine !== 'undefined') MusicEngine.start();
+    };
+    document.addEventListener('pointerdown', kick);
+    document.addEventListener('keydown', kick);
+})();
 
 function updateMainMenu() {
     const lvl = getLevel();
@@ -271,64 +350,318 @@ function carSvg(style, color, idx) {
 }
 
 function buildCarSelect() {
-    const grid = document.getElementById('car-grid');
-    grid.innerHTML = '';
+    const strip = document.getElementById('car-strip') || document.getElementById('car-grid');
+    if (!strip) return;
+    strip.innerHTML = '';
     CARS.forEach((car, i) => {
         const locked = GameState.xp < car.unlock;
         const div = document.createElement('div');
         div.className = `card ${i === GameState.selectedCar ? 'selected' : ''} ${locked ? 'locked' : ''}`;
+        div.dataset.style = car.style;
+        const thumb = window.__carThumbnails && window.__carThumbnails[car.style];
         const art = locked
-            ? '<div class="lock-icon" style="margin:14px 0">&#128274;</div>'
-            : carSvg(car.style, GameState.selectedColor, i);
+            ? '<div class="lock-icon" style="margin:8px 0;font-size:24px">&#128274;</div>'
+            : (thumb
+                ? `<img class="card-car card-thumb" src="${thumb}" alt="${car.name}"/>`
+                : carSvg(car.style, GameState.selectedColor, i));
         div.innerHTML = `
             ${art}
-            <div class="card-title">${car.name}</div>
-            <div class="card-desc">${locked ? `Unlock at ${car.unlock} XP` : car.desc}</div>
-            <div class="card-stats">
-                <div class="stat-label"><span>Speed</span><span>${car.speed}%</span></div>
-                <div class="stat-bar"><div class="stat-fill" style="width:${car.speed}%"></div></div>
-                <div class="stat-label"><span>Accel</span><span>${car.accel}%</span></div>
-                <div class="stat-bar"><div class="stat-fill" style="width:${car.accel}%"></div></div>
-                <div class="stat-label"><span>Handling</span><span>${car.handling}%</span></div>
-                <div class="stat-bar"><div class="stat-fill" style="width:${car.handling}%"></div></div>
-            </div>`;
+            <div class="card-title">${car.name}</div>`;
         if (!locked) div.onclick = () => { GameState.selectedCar = i; buildCarSelect(); };
-        grid.appendChild(div);
+        strip.appendChild(div);
     });
 
-    // Update the 3D rotating preview + its name label
+    // Auto-scroll selected card into view
+    const selectedCard = strip.querySelector('.card.selected');
+    if (selectedCard && selectedCard.scrollIntoView) {
+        selectedCard.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+
+    // Update the 3D rotating preview + its name label and stats panel
     const selected = CARS[GameState.selectedCar];
     const previewName = document.getElementById('car-preview-name');
     if (previewName && selected) previewName.textContent = selected.name;
+    const previewDesc = document.getElementById('car-preview-desc');
+    if (previewDesc && selected) previewDesc.textContent = selected.desc;
+    // Convert game stats (0-100) to display values
+    const psSpeed = document.getElementById('ps-speed');
+    const psAccel = document.getElementById('ps-accel');
+    const psHandling = document.getElementById('ps-handling');
+    const psSpeedBar = document.getElementById('ps-speed-bar');
+    const psAccelBar = document.getElementById('ps-accel-bar');
+    const psHandlingBar = document.getElementById('ps-handling-bar');
+    if (selected && psSpeed) {
+        // Speed scaled to roughly 200-400 km/h, power to 200-1500hp
+        psSpeed.textContent = Math.round(180 + selected.speed * 2.4);
+        psAccel.textContent = Math.round(200 + selected.accel * 12);
+        psHandling.textContent = selected.handling;
+        psSpeedBar.style.width = selected.speed + '%';
+        psAccelBar.style.width = selected.accel + '%';
+        psHandlingBar.style.width = selected.handling + '%';
+    }
     if (typeof updateCarPreview === 'function') updateCarPreview();
 
     const cp = document.getElementById('color-picker');
-    cp.innerHTML = '';
-    COLORS.forEach(c => {
-        const s = document.createElement('div');
-        s.className = `color-swatch ${c === GameState.selectedColor ? 'selected' : ''}`;
-        s.style.background = c;
-        s.onclick = () => { GameState.selectedColor = c; buildCarSelect(); };
-        cp.appendChild(s);
-    });
+    if (cp) cp.innerHTML = '';
+}
+
+// Called from preview.js after a thumbnail is captured for a car style.
+// Updates just that one card in the strip without rebuilding the whole list
+// (which would interrupt the user's scroll/selection state).
+function refreshCarStripCard(style) {
+    const strip = document.getElementById('car-strip');
+    if (!strip || !window.__carThumbnails || !window.__carThumbnails[style]) return;
+    const card = strip.querySelector(`[data-style="${style}"]`);
+    if (!card) return;
+    const existingArt = card.querySelector('.card-car, .lock-icon');
+    if (existingArt) {
+        const img = document.createElement('img');
+        img.className = 'card-car card-thumb';
+        img.src = window.__carThumbnails[style];
+        img.alt = '';
+        existingArt.replaceWith(img);
+    }
 }
 
 function buildTrackSelect() {
-    const grid = document.getElementById('track-grid');
-    grid.innerHTML = '';
+    const strip = document.getElementById('track-strip') || document.getElementById('track-grid');
+    if (!strip) return;
+    strip.innerHTML = '';
     const icons = ['&#127796;', '&#127964;', '&#127754;', '&#127810;', '&#127747;', '&#127796;', '&#127755;', '&#127956;', '&#127747;', '&#9968;'];
     TRACKS.forEach((t, i) => {
         const locked = GameState.xp < t.unlock;
         const div = document.createElement('div');
         div.className = `card ${i === GameState.selectedTrack ? 'selected' : ''} ${locked ? 'locked' : ''}`;
+        const mini = locked ? '' : trackMiniSvg(t);
+        const lockArt = '<div class="lock-icon" style="margin:8px 0;font-size:24px">&#128274;</div>';
         div.innerHTML = `
-            ${locked ? '<div class="lock-icon">&#128274;</div>' : `<div class="card-icon">${icons[i] || '&#127937;'}</div>`}
-            <div class="card-title">${t.name}</div>
-            <div class="card-desc">${locked ? `Unlock at ${t.unlock} XP` : t.desc}</div>
-            <div style="margin-top:8px;"><span class="level-badge level-${t.difficulty.toLowerCase()}">${t.difficulty}</span></div>`;
+            ${locked ? lockArt : mini}
+            <div class="card-title">${t.name}</div>`;
         if (!locked) div.onclick = () => { GameState.selectedTrack = i; buildTrackSelect(); };
-        grid.appendChild(div);
+        strip.appendChild(div);
     });
+
+    const sel = strip.querySelector('.card.selected');
+    if (sel && sel.scrollIntoView) sel.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+
+    // Update preview + stats panel
+    const t = TRACKS[GameState.selectedTrack];
+    if (!t) return;
+    const nm = document.getElementById('track-preview-name');
+    const desc = document.getElementById('track-preview-desc');
+    if (nm) nm.textContent = t.name;
+    if (desc) desc.textContent = t.desc;
+
+    const stats = computeTrackStats(t);
+    setStat('ts-turns', stats.turns, Math.min(100, stats.turns * 6));
+    setStat('ts-length', stats.length, Math.min(100, (stats.length - 800) / 16));
+    setStat('ts-width', t.trackWidth, Math.min(100, t.trackWidth * 5));
+    const diffEl = document.getElementById('ts-diff');
+    if (diffEl) diffEl.innerHTML = `<span class="level-badge level-${t.difficulty.toLowerCase()}">${t.difficulty}</span>`;
+
+    if (typeof initTrackPreview === 'function') initTrackPreview();
+    if (typeof updateTrackPreview === 'function') updateTrackPreview();
+}
+
+function setStat(idVal, value, barPct) {
+    const el = document.getElementById(idVal);
+    if (el) el.textContent = value;
+    const bar = document.getElementById(idVal + '-bar');
+    if (bar) bar.style.width = Math.max(8, Math.min(100, barPct)) + '%';
+}
+
+// Compute the track's loop path (same math as generateTrack in track.js but
+// without Catmull-Rom subdivision — we just need the rough shape for preview
+// and a turns count).
+// Per-track shape, identical to track.js _trackShape. Keep in sync.
+function _trackShape(trackDef) {
+    if (trackDef.trackModel) {
+        return { h1: 3, h2: 5, ph1: 0, ph2: 0, a1: 60, a2: 30,
+                 h3: 1, ph3a: 0, a3: 0, xScale: 1, zScale: 1, rot: 0, ph3: 0 };
+    }
+    let h = 0;
+    const n = trackDef.name || '';
+    for (let i = 0; i < n.length; i++) h = ((h * 31) + n.charCodeAt(i)) | 0;
+    h = h >>> 0;
+    return {
+        h1: 2 + (h & 7), h2: 3 + ((h >> 3) & 7), h3: 1 + ((h >> 26) & 1),
+        ph1: ((h >> 6) & 15) * 0.4, ph2: ((h >> 10) & 15) * 0.4, ph3a: ((h >> 24) & 7) * 0.7,
+        a1: 30 + ((h >> 14) & 31), a2: 15 + ((h >> 19) & 23), a3: 20 + ((h >> 27) & 15),
+        xScale: 0.7 + ((h >> 16) & 7) * 0.10, zScale: 0.7 + ((h >> 28) & 7) * 0.10,
+        rot: ((h >> 12) & 7) * (Math.PI / 4),
+        ph3: ((h >> 22) & 15) * 0.5,
+    };
+}
+
+function _trackPath(trackDef) {
+    const n = trackDef.segments;
+    const radius = 200;
+    const f1 = (typeof F1_TRACK_SHAPES !== 'undefined')
+        ? F1_TRACK_SHAPES[trackDef.name] : null;
+    if (f1 && f1.length >= 6) {
+        const fr = (typeof F1_TRACK_RADIUS !== 'undefined') ? F1_TRACK_RADIUS : radius;
+        return f1.map(p => ({ x: p[0] * fr, z: p[1] * fr }));
+    }
+    const sh = _trackShape(trackDef);
+    const cr = Math.cos(sh.rot), sr = Math.sin(sh.rot);
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2;
+        const wiggle = Math.sin(a * sh.h1 + sh.ph1) * trackDef.maxCurve * sh.a1
+                     + Math.cos(a * sh.h2 + sh.ph2) * trackDef.maxCurve * sh.a2
+                     + Math.sin(a * sh.h3 + sh.ph3a) * trackDef.maxCurve * sh.a3;
+        const r = radius + wiggle;
+        const ux = Math.cos(a) * r * sh.xScale;
+        const uz = Math.sin(a) * r * sh.zScale;
+        pts.push({ x: ux * cr - uz * sr, z: ux * sr + uz * cr });
+    }
+    return pts;
+}
+
+function computeTrackStats(trackDef) {
+    const pts = _trackPath(trackDef);
+    const n = pts.length;
+    // Turns = direction changes whose signed curvature crosses a threshold and
+    // alternates sign (a real "corner" is where the track bends one way).
+    let turns = 0;
+    let lastSign = 0;
+    let inTurn = false;
+    let length = 0;
+    for (let i = 0; i < n; i++) {
+        const p0 = pts[(i - 1 + n) % n];
+        const p1 = pts[i];
+        const p2 = pts[(i + 1) % n];
+        // Segment length
+        const dx = p1.x - p0.x, dz = p1.z - p0.z;
+        length += Math.sqrt(dx * dx + dz * dz);
+        // Signed curvature
+        const ax = p1.x - p0.x, az = p1.z - p0.z;
+        const bx = p2.x - p1.x, bz = p2.z - p1.z;
+        const cross = ax * bz - az * bx;
+        const mag = Math.sqrt(ax * ax + az * az) * Math.sqrt(bx * bx + bz * bz) || 1;
+        const k = cross / mag;
+        const sign = k > 0.06 ? 1 : k < -0.06 ? -1 : 0;
+        if (sign !== 0 && sign !== lastSign) {
+            turns++;
+            lastSign = sign;
+            inTurn = true;
+        } else if (sign === 0 && inTurn) {
+            inTurn = false;
+        }
+    }
+    return { turns, length: Math.round(length) };
+}
+
+// Tiny inline SVG mini-map of a track (for the strip cards).
+function trackMiniSvg(trackDef) {
+    const pts = _trackPath(trackDef);
+    const skyHex = '#' + (trackDef.skyColor).toString(16).padStart(6, '0');
+    const groundHex = '#' + (trackDef.groundColor).toString(16).padStart(6, '0');
+    let lo = { x: Infinity, z: Infinity }, hi = { x: -Infinity, z: -Infinity };
+    pts.forEach(p => {
+        if (p.x < lo.x) lo.x = p.x; if (p.z < lo.z) lo.z = p.z;
+        if (p.x > hi.x) hi.x = p.x; if (p.z > hi.z) hi.z = p.z;
+    });
+    const w = 180, h = 100, pad = 8;
+    const sx = (w - pad * 2) / (hi.x - lo.x);
+    const sz = (h - pad * 2) / (hi.z - lo.z);
+    const s = Math.min(sx, sz);
+    const cx = (lo.x + hi.x) / 2, cz = (lo.z + hi.z) / 2;
+    const path = pts.map((p, i) => {
+        const px = (p.x - cx) * s + w / 2;
+        const py = (p.z - cz) * s + h / 2;
+        return (i === 0 ? 'M' : 'L') + px.toFixed(1) + ',' + py.toFixed(1);
+    }).join('') + 'Z';
+    return `<svg class="card-car" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+        <rect x="0" y="0" width="${w}" height="${h}" fill="${skyHex}" opacity="0.18" rx="6"/>
+        <path d="${path}" stroke="${groundHex}" stroke-width="9" fill="none" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>
+        <path d="${path}" stroke="#1a1a22" stroke-width="6" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="${path}" stroke="#ff6b35" stroke-width="1.6" fill="none" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="3 4" opacity="0.7"/>
+    </svg>`;
+}
+
+// Bigger top-down preview drawn on the canvas in the bottom panel.
+function drawTrackPreview(trackDef) {
+    const canvas = document.getElementById('track-preview-canvas');
+    if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const w = Math.max(300, Math.floor(rect.width));
+    const h = Math.max(220, Math.floor(rect.height || rect.width * 0.55));
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const pts = _trackPath(trackDef);
+    let lo = { x: Infinity, z: Infinity }, hi = { x: -Infinity, z: -Infinity };
+    pts.forEach(p => {
+        if (p.x < lo.x) lo.x = p.x; if (p.z < lo.z) lo.z = p.z;
+        if (p.x > hi.x) hi.x = p.x; if (p.z > hi.z) hi.z = p.z;
+    });
+    const pad = 60;
+    const sx = (w - pad * 2) / (hi.x - lo.x);
+    const sz = (h - pad * 2) / (hi.z - lo.z);
+    const s = Math.min(sx, sz);
+    const cx = (lo.x + hi.x) / 2, cz = (lo.z + hi.z) / 2;
+    const project = p => ({ x: (p.x - cx) * s + w / 2, y: (p.z - cz) * s + h / 2 });
+
+    // Outer glow shoulder
+    const shoulderColor = '#' + (trackDef.groundColor).toString(16).padStart(6, '0');
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = shoulderColor;
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 36;
+    ctx.beginPath();
+    pts.forEach((p, i) => {
+        const q = project(p);
+        if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+
+    // Asphalt
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#21242b';
+    ctx.lineWidth = 22;
+    ctx.beginPath();
+    pts.forEach((p, i) => {
+        const q = project(p);
+        if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+
+    // Centre line dashes
+    ctx.strokeStyle = '#ff6b35';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 7]);
+    ctx.beginPath();
+    pts.forEach((p, i) => {
+        const q = project(p);
+        if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Start/finish marker
+    if (pts.length) {
+        const q = project(pts[0]);
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ff6b35';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('START', q.x, q.y - 12);
+    }
 }
 
 function buildRaceConfig() {

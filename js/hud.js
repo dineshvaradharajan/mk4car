@@ -31,18 +31,27 @@ function updateHUD() {
     _getHudEl('hud-speed').textContent = displaySpeed;
     _getHudEl('hud-lap').textContent = Math.min(playerLap, GameState.laps);
 
-    // Nitro bar with color glow based on level
-    const nitroBar = _getHudEl('nitro-bar');
-    nitroBar.style.width = nitro + '%';
-    if (nitro > 90) {
-        nitroBar.style.background = 'linear-gradient(90deg,#00ddff,#ffffff)';
-        nitroBar.style.boxShadow = '0 0 15px rgba(0,221,255,.8)';
-    } else if (nitro > 50) {
-        nitroBar.style.background = 'linear-gradient(90deg,#ff6b35,#00ddff)';
-        nitroBar.style.boxShadow = '0 0 8px rgba(255,107,53,.5)';
-    } else {
-        nitroBar.style.background = 'linear-gradient(90deg,#ff6b35,#f7c948)';
-        nitroBar.style.boxShadow = '0 0 5px rgba(255,107,53,.3)';
+    // Big nitro bar at top-center (Asphalt-style)
+    const bigFill = document.getElementById('big-nitro-fill');
+    const bigPct = document.getElementById('nitro-pct');
+    const bigBox = document.getElementById('big-nitro');
+    if (bigBox) bigBox.style.display = GameState.racing ? 'block' : 'none';
+    if (bigFill) {
+        bigFill.style.width = nitro + '%';
+        if (bigPct) bigPct.textContent = Math.round(nitro) + '%';
+        if (nitro > 90) {
+            bigFill.style.background = 'linear-gradient(90deg,#00ddff 0%,#ffffff 100%)';
+            bigFill.style.boxShadow = '0 0 30px rgba(0,221,255,.95)';
+        } else if (nitro > 50) {
+            bigFill.style.background = 'linear-gradient(90deg,#ff6b35 0%,#f7c948 50%,#00ddff 100%)';
+            bigFill.style.boxShadow = '0 0 20px rgba(255,107,53,.7)';
+        } else if (nitro > 15) {
+            bigFill.style.background = 'linear-gradient(90deg,#ff6b35 0%,#f7c948 100%)';
+            bigFill.style.boxShadow = '0 0 12px rgba(255,107,53,.5)';
+        } else {
+            bigFill.style.background = 'linear-gradient(90deg,#aa3333 0%,#ff6b35 100%)';
+            bigFill.style.boxShadow = '0 0 8px rgba(170,51,51,.6)';
+        }
     }
 
     // Drift indicator — show during any drift

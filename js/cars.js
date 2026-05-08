@@ -10,16 +10,19 @@ function uid(prefix) { return prefix + '_' + (++_carPartId); }
 // factor. If one specific model still looks bigger or smaller than the
 // others in-race, bump its targetScale individually.
 const CAR_MODELS = {
-    'ferrari':    { file: 'models/ferrari-f40.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
-    'lambo':      { file: 'models/sportster.glb',        targetLen: 3.2, yOffset: 0, rotationY: 0 },
-    'hatchback':  { file: 'models/convertible.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'ferrari':    { file: 'models/ferrari-f40-1987.glb', targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'laferrari':  { file: 'models/ferrari-laferrari.glb', targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'lambo':      { file: 'models/lamborghini-diablo-sv.glb', targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'hatchback':  { file: 'models/cartoon-car.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
     'muscle':     { file: 'models/dodge-challenger.glb', targetLen: 3.2, yOffset: 0, rotationY: 0 },
-    'f1':         { file: 'models/delorean.glb',         targetLen: 3.2, yOffset: 0, rotationY: 0 },
-    'koenigsegg': { file: 'models/nissan-gtr.glb',       targetLen: 3.2, yOffset: 0, rotationY: 0 },
-    'gt':         { file: 'models/camaro-zl1.glb',       targetLen: 3.2, yOffset: 0, rotationY: 0 },
-    'supra4':     { file: 'models/toyota-ae86.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
-    'supra5':     { file: 'models/mazda-rx7.glb',        targetLen: 3.2, yOffset: 0, rotationY: 0 },
-    'bugatti':    { file: 'models/rolls-royce.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'f1':         { file: 'models/f1-2022-generic.glb',  targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'ferrarif1':  { file: 'models/ferrari-f1-2019.glb',  targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'koenigsegg': { file: 'models/koenigsegg-ccx.glb',   targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'jesko':      { file: 'models/koenigsegg-jesko.glb', targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'gt':         { file: 'models/lambo-terzo.glb',      targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'supra4':     { file: 'models/toyota-supra-mk4.glb', targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'supra5':     { file: 'models/toyota-supra-mk5.glb', targetLen: 3.2, yOffset: 0, rotationY: 0 },
+    'bugatti':    { file: 'models/bugatti-chiron.glb',   targetLen: 3.2, yOffset: 0, rotationY: 0 },
 };
 
 // Cache loaded models
@@ -255,93 +258,98 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
     if (modelInfo.rotationY)   inner.rotation.y = modelInfo.rotationY;
     const meshTarget = inner;
 
-    originalMeshes.forEach((mesh, idx) => {
-        if (mesh.getClassName() === 'TransformNode' && idx === 0) return;
+    // Find the import root (Babylon's GLB loader creates "__root__" as the
+    // single ancestor of everything in the file). Cloning that one node with
+    // doNotCloneChildren=false recursively clones the whole subtree in a
+    // single op, preserving every nested transform — which Sketchfab/USDZ
+    // models depend on (their meshes have small local positions and rely on
+    // ancestor matrices for placement). The previous per-mesh iterate +
+    // reparent flattened the hierarchy and collapsed everything to origin.
+    const importRoot = originalMeshes.find(m => m && m.name === '__root__') || originalMeshes[0];
+    if (!importRoot) return parentNode;
 
-        let clone;
-        try {
-            clone = mesh.clone(uid('carModel'));
-        } catch(e) {
-            clone = mesh.createInstance(uid('carInst'));
+    let rootClone;
+    try {
+        rootClone = importRoot.clone(uid('carRoot'), null, false);
+    } catch(e) {
+        rootClone = importRoot.createInstance(uid('carRootInst'));
+    }
+    if (!rootClone) return parentNode;
+    rootClone.parent = meshTarget;
+
+    // Neutralize __root__'s own transform — Babylon's GLB loader sets it to
+    // (-1, 1, 1) scale to convert from glTF right-handed to its own left-handed
+    // space, which mirrors the model along X and (with backface culling) makes
+    // every face invisible. The children's local transforms already carry the
+    // correct positions so we can safely zero this out.
+    rootClone.position.set(0, 0, 0);
+    rootClone.rotation.set(0, 0, 0);
+    if (rootClone.rotationQuaternion) rootClone.rotationQuaternion = BABYLON.Quaternion.Identity();
+    rootClone.scaling.set(1, 1, 1);
+
+    // Walk the cloned subtree: re-enable, tint body-colored materials, register
+    // for shadows. (The originals were disabled in loadCarModel so they don't
+    // show at the import position; the clones need to be turned back on.)
+    const tintMaterial = (mat) => {
+        let brightness = 0.5;
+        if (mat.diffuseColor) {
+            brightness = (mat.diffuseColor.r + mat.diffuseColor.g + mat.diffuseColor.b) / 3;
         }
-
-        if (clone) {
-            clone.parent = meshTarget;
-            clone.isVisible = true;
-            clone.setEnabled(true);
-
-            // PRESERVE the original GLB material and texture (colormap.png atlas)
-            // Only clone the material so we can tint body-colored parts
-            if (clone.material) {
-                const origMat = clone.material;
-                let mat;
-                try {
-                    mat = origMat.clone(uid('carMat'));
-                } catch(e) {
-                    mat = origMat;
-                }
-                clone.material = mat;
-
-                // Detect body panels by color brightness and tint them
-                // Kenney models use the colormap: bright regions = body panels
-                let brightness = 0.5;
-                if (mat.diffuseColor) {
-                    brightness = (mat.diffuseColor.r + mat.diffuseColor.g + mat.diffuseColor.b) / 3;
-                }
-
-                if (brightness > 0.35 && brightness < 0.95) {
-                    // This is a body panel — tint with player's color
-                    if (mat.diffuseTexture) {
-                        mat.diffuseColor = parsedColor;
-                    } else {
-                        mat.diffuseColor = parsedColor;
-                    }
-                    // Metallic specular + environment reflection for shiny paint
-                    mat.specularColor = new BABYLON.Color3(0.7, 0.7, 0.7);
-                    mat.specularPower = 80;
-                    if (scene.environmentTexture) {
-                        mat.reflectionTexture = scene.environmentTexture;
-                        mat.reflectionTexture.level = 0.3;
-                        mat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
-                        mat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.8, 0.8, 0.8);
-                        mat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0, 0, 0);
-                        mat.reflectionFresnelParameters.power = 3;
-                        mat.reflectionFresnelParameters.bias = 0.05;
-                    }
-                } else if (brightness >= 0.95) {
-                    // Very bright = windows/glass — make semi-transparent + reflective
-                    mat.alpha = 0.4;
-                    mat.specularColor = new BABYLON.Color3(1, 1, 1);
-                    mat.specularPower = 128;
-                    if (scene.environmentTexture) {
-                        mat.reflectionTexture = scene.environmentTexture;
-                        mat.reflectionTexture.level = 0.5;
-                    }
-                    mat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
-                    mat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(1, 1, 1);
-                    mat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0, 0, 0);
-                    mat.reflectionFresnelParameters.power = 4;
-                    mat.reflectionFresnelParameters.bias = 0.1;
-                } else if (brightness <= 0.15) {
-                    // Very dark = tires/trim — add subtle sheen
-                    mat.specularColor = new BABYLON.Color3(0.15, 0.15, 0.15);
-                    mat.specularPower = 16;
-                } else {
-                    // Medium = chrome/accents — enhance reflectivity
-                    mat.specularColor = new BABYLON.Color3(0.4, 0.4, 0.4);
-                    mat.specularPower = 48;
-                    if (scene.environmentTexture) {
-                        mat.reflectionTexture = scene.environmentTexture;
-                        mat.reflectionTexture.level = 0.4;
-                    }
-                }
+        if (brightness > 0.35 && brightness < 0.95) {
+            mat.diffuseColor = parsedColor;
+            mat.specularColor = new BABYLON.Color3(0.7, 0.7, 0.7);
+            mat.specularPower = 80;
+            if (scene.environmentTexture) {
+                mat.reflectionTexture = scene.environmentTexture;
+                mat.reflectionTexture.level = 0.3;
+                mat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
+                mat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.8, 0.8, 0.8);
+                mat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0, 0, 0);
+                mat.reflectionFresnelParameters.power = 3;
+                mat.reflectionFresnelParameters.bias = 0.05;
             }
-
-            if (shadowGenerator && clone.getTotalVertices && clone.getTotalVertices() > 0) {
-                shadowGenerator.addShadowCaster(clone);
+        } else if (brightness >= 0.95) {
+            mat.alpha = 0.4;
+            mat.specularColor = new BABYLON.Color3(1, 1, 1);
+            mat.specularPower = 128;
+            if (scene.environmentTexture) {
+                mat.reflectionTexture = scene.environmentTexture;
+                mat.reflectionTexture.level = 0.5;
+            }
+            mat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
+            mat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(1, 1, 1);
+            mat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0, 0, 0);
+            mat.reflectionFresnelParameters.power = 4;
+            mat.reflectionFresnelParameters.bias = 0.1;
+        } else if (brightness <= 0.15) {
+            mat.specularColor = new BABYLON.Color3(0.15, 0.15, 0.15);
+            mat.specularPower = 16;
+        } else {
+            mat.specularColor = new BABYLON.Color3(0.4, 0.4, 0.4);
+            mat.specularPower = 48;
+            if (scene.environmentTexture) {
+                mat.reflectionTexture = scene.environmentTexture;
+                mat.reflectionTexture.level = 0.4;
             }
         }
-    });
+    };
+
+    const visit = (node) => {
+        if (node.setEnabled) node.setEnabled(true);
+        if (node.isVisible !== undefined) node.isVisible = true;
+        if (node.material) {
+            const origMat = node.material;
+            let mat;
+            try { mat = origMat.clone(uid('carMat')); } catch(e) { mat = origMat; }
+            node.material = mat;
+            tintMaterial(mat);
+        }
+        if (shadowGenerator && node.getTotalVertices && node.getTotalVertices() > 0) {
+            shadowGenerator.addShadowCaster(node);
+        }
+        if (node.getChildren) node.getChildren().forEach(visit);
+    };
+    visit(rootClone);
 
     // Normalize size: measure raw bounds, scale so longest axis == targetLen
     const refreshAll = (node) => {
@@ -375,12 +383,13 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
         refreshAll(parentNode);
     }
 
-    console.log('[cars] fit', modelInfo.file, 'rawMax=', raw ? Math.max(raw.size.x, raw.size.y, raw.size.z).toFixed(2) : '?',
-        'fitScale=', fitScale.toFixed(3),
-        'lift=', (-lift).toFixed(3));
+    console.log('[cars v2] fit', modelInfo.file, 'rawMax=', raw ? Math.max(raw.size.x, raw.size.y, raw.size.z).toFixed(2) : '?',
+        'fitScale=', fitScale.toFixed(4),
+        'lift=', (-lift).toFixed(3),
+        'meshCount=', originalMeshes.length);
 
     parentNode.position.y += (modelInfo.yOffset || 0);
-    _addHeadlightBeams(parentNode, 2.2 * fitScale, 0.5 * fitScale, 5.5 * fitScale, 0.42 * fitScale);
+    _addHeadlightBeams(parentNode, 2.2, 0.5, 5.5, 0.42);
 
     return parentNode;
 }
@@ -398,6 +407,16 @@ function _measureCarBounds(parentNode) {
             const lo = bb.minimumWorld, hi = bb.maximumWorld;
             if (isFinite(lo.x) && isFinite(hi.x)) {
                 const dx = hi.x - lo.x, dy = hi.y - lo.y, dz = hi.z - lo.z;
+                // Skip flat huge planes — USDZ→GLB conversions sometimes embed
+                // a giant ground/shadow plane (e.g. future-legacy.glb has a
+                // 2249×0×2249 plane) that wrecks the bounds and shrinks the
+                // car to a dot in race.
+                const longest = Math.max(dx, dy, dz);
+                const shortest = Math.min(dx, dy, dz);
+                if (longest > 50 && shortest < longest * 0.01) {
+                    if (n.setEnabled) n.setEnabled(false);
+                    return;
+                }
                 if (dx >= 0.0001 || dy >= 0.0001 || dz >= 0.0001) {
                     if (!min) { min = lo.clone(); max = hi.clone(); }
                     else { min.minimizeInPlace(lo); max.maximizeInPlace(hi); }

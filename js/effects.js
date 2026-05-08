@@ -346,3 +346,105 @@ function disposeParticleSystems() {
     if (nitroEmitter) { nitroEmitter.dispose(); nitroEmitter = null; }
     if (speedLinesOverlay) { speedLinesOverlay.style.opacity = '0'; }
 }
+
+// ============================================================
+//  NITRO PICKUPS — Asphalt-style boost canisters along the track
+// ============================================================
+let _nitroPickups = []; // [{ mesh, glow, t, active, respawn }]
+
+function spawnNitroPickups(track) {
+    // Clean up any leftovers from a previous race
+    _nitroPickups.forEach(p => {
+        try { p.mesh.dispose(); } catch(e) {}
+        try { p.glow.dispose(); } catch(e) {}
+    });
+    _nitroPickups = [];
+
+    if (!trackPoints || !trackPoints.length) return;
+
+    const count = 14; // pickups around the lap
+    const stepT = 1 / count;
+    const upVec = new BABYLON.Vector3(0, 1, 0);
+
+    // Glowing blue tetrahedron material
+    const pickupMat = new BABYLON.StandardMaterial('nitroPickupMat', scene);
+    pickupMat.disableLighting = true;
+    pickupMat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+    pickupMat.emissiveColor = new BABYLON.Color3(0.20, 0.85, 1.0);
+    pickupMat.alpha = 0.95;
+
+    const haloMat = new BABYLON.StandardMaterial('nitroHaloMat', scene);
+    haloMat.disableLighting = true;
+    haloMat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+    haloMat.emissiveColor = new BABYLON.Color3(0.10, 0.55, 0.95);
+    haloMat.alpha = 0.35;
+    haloMat.backFaceCulling = false;
+
+    for (let i = 0; i < count; i++) {
+        const t = i * stepT + 0.04;
+        const pos = getTrackPointAt(trackPoints, t);
+        const dir = getTrackDirectionAt(trackPoints, t);
+        const right = BABYLON.Vector3.Cross(upVec, dir).normalize();
+        // Slight side offset so they don't all sit on the racing line
+        const sideOffset = (i % 3 - 1) * 1.4;
+
+        // Diamond-shaped icosphere as the pickup
+        const mesh = BABYLON.MeshBuilder.CreatePolyhedron('nitroPickup' + i, {
+            type: 1, size: 1.2,
+        }, scene);
+        mesh.material = pickupMat;
+        mesh.position.set(
+            pos.x + right.x * sideOffset,
+            pos.y + 1.6,
+            pos.z + right.z * sideOffset
+        );
+
+        // Soft halo plane behind the pickup
+        const glow = BABYLON.MeshBuilder.CreateDisc('nitroHalo' + i, {
+            radius: 1.8, tessellation: 18, sideOrientation: BABYLON.Mesh.DOUBLESIDE,
+        }, scene);
+        glow.material = haloMat;
+        glow.position.copyFrom(mesh.position);
+        glow.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+
+        _nitroPickups.push({ mesh, glow, t, active: true, respawn: 0, baseY: mesh.position.y });
+    }
+}
+
+function updateNitroPickups(dt) {
+    if (!_nitroPickups.length || !playerCar) return;
+    const px = playerCar.position.x, pz = playerCar.position.z;
+    const time = (typeof raceTime !== 'undefined' ? raceTime : performance.now() * 0.001);
+    const collectRange2 = 16; // ~4m
+
+    _nitroPickups.forEach(p => {
+        if (p.active) {
+            // Spin + bob
+            p.mesh.rotation.y += dt * 2.5;
+            p.mesh.position.y = p.baseY + Math.sin(time * 3 + p.t * 12) * 0.3;
+            p.glow.position.y = p.mesh.position.y;
+            // Collision check
+            const dx = p.mesh.position.x - px;
+            const dz = p.mesh.position.z - pz;
+            if (dx * dx + dz * dz < collectRange2) {
+                // Refill nitro and hide for a bit
+                if (typeof nitro !== 'undefined') {
+                    nitro = Math.min(100, nitro + 35);
+                }
+                p.active = false;
+                p.mesh.setEnabled(false);
+                p.glow.setEnabled(false);
+                p.respawn = 8; // seconds until respawn
+                if (typeof _showActionText === 'function') _showActionText('+NITRO', '#00ddff');
+                if (typeof SoundEngine !== 'undefined' && SoundEngine.playNitro) SoundEngine.playNitro();
+            }
+        } else {
+            p.respawn -= dt;
+            if (p.respawn <= 0) {
+                p.active = true;
+                p.mesh.setEnabled(true);
+                p.glow.setEnabled(true);
+            }
+        }
+    });
+}

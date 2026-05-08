@@ -279,9 +279,69 @@ function initScene() {
     ground.position.y = -2.0;
 
     // ── Generate track ──
+    // trackPoints drives physics + AI even when a custom GLB is in use, since
+    // the GLB was exported from the same procedural curve so they line up.
     trackPoints = generateTrack(track);
-    buildTrackMesh(track);
-    addScenery(track);
+    if (track.trackModel) {
+        // Load the pre-baked 3D track GLB. The exported GLB only contains the
+        // road ribbon and basic geometry — we still call addScenery() below
+        // to get procedural terrain blending, trees, billboards etc. so the
+        // world feels populated. Physics uses the same trackPoints curve.
+        addScenery(track);
+        const lastSlash = track.trackModel.lastIndexOf('/');
+        const rootUrl = lastSlash >= 0 ? track.trackModel.substring(0, lastSlash + 1) : './';
+        const fileName = lastSlash >= 0 ? track.trackModel.substring(lastSlash + 1) : track.trackModel;
+        BABYLON.SceneLoader.ImportMesh('', rootUrl, fileName, scene, (meshes) => {
+            // Post-process imported track GLBs.
+            // 1. The original meshes used disableLighting+emissive for ocean/
+            //    lava/water; that exports as dark-diffuse PBR which renders
+            //    BLACK under normal lighting. Restore brightness from emissive
+            //    or just brighten dark albedos.
+            // 2. Disable backface culling so flipped discs aren't invisible.
+            // 3. Drop shadow casting from the imported scenery (the in-race
+            //    shadow generator otherwise paints the terrain black with the
+            //    sum of every tree's shadow projection).
+            meshes.forEach(m => {
+                if (m.receiveShadows !== undefined) m.receiveShadows = true;
+                // Stop these from casting onto the in-race terrain — they
+                // were exported with their own lighting in mind.
+                if (m._isShadowCaster !== undefined) m._isShadowCaster = false;
+                if (m.material) {
+                    const mat = m.material;
+                    if ('backFaceCulling' in mat) mat.backFaceCulling = false;
+                    const dc = mat.albedoColor || mat.diffuseColor;
+                    const ec = mat.emissiveColor;
+                    const sum = dc ? (dc.r + dc.g + dc.b) : 0;
+                    const eSum = ec ? (ec.r + ec.g + ec.b) : 0;
+                    // Diffuse came in dark — use emissive if it's bright,
+                    // otherwise just lift the diffuse to mid-grey so it isn't
+                    // a black silhouette.
+                    if (sum < 0.15) {
+                        const replacement = (eSum > 0.15)
+                            ? new BABYLON.Color3(ec.r, ec.g, ec.b)
+                            : new BABYLON.Color3(0.55, 0.55, 0.55);
+                        if ('albedoColor' in mat) mat.albedoColor = replacement.clone();
+                        if ('diffuseColor' in mat) mat.diffuseColor = replacement.clone();
+                    }
+                    // Emissive is usually unwanted in-race (trees shouldn't
+                    // glow) — keep it only for materials that were dark.
+                    if (sum > 0.15 && ec && eSum > 0.05) {
+                        ec.set(0, 0, 0);
+                    }
+                }
+            });
+        }, null, (s, msg) => {
+            console.warn('[track] custom GLB failed, falling back to procedural:', msg);
+            buildTrackMesh(track);
+            addScenery(track);
+        });
+    } else {
+        buildTrackMesh(track);
+        addScenery(track);
+    }
+
+    // ── Nitro pickups along the track ──
+    spawnNitroPickups(track);
 
     // ── Build player car ──
     playerCar = buildCarMesh(GameState.selectedColor, CARS[GameState.selectedCar]);
@@ -361,14 +421,21 @@ function createSkyDome(track, isNight, isDesert, isSnow) {
         zenith = '#6688bb';
         horizon = '#d0dce8';
     } else {
-        // Rich vivid blue sky
-        zenith = '#1a4499';
-        horizon = '#88bbdd';
+        // Realistic daytime sky with proper atmospheric scattering
+        zenith = '#2865b8';
+        horizon = '#bcd6e8';
     }
 
     const grad = ctx.createLinearGradient(0, 0, 0, skySize);
     grad.addColorStop(0, zenith);
-    grad.addColorStop(0.45, horizon);
+    if (!isNight && !isDesert && !isSnow) {
+        // Layered atmospheric gradient: deep zenith → mid-blue → pale horizon haze
+        grad.addColorStop(0.25, '#4a87cb');
+        grad.addColorStop(0.42, '#85b1d9');
+        grad.addColorStop(0.5, horizon);
+    } else {
+        grad.addColorStop(0.45, horizon);
+    }
     grad.addColorStop(0.55, horizon);
     // Below horizon — blend toward ground/fog color
     const fogHex = '#' + ((track.fogColor >> 16) & 0xff).toString(16).padStart(2,'0') +
@@ -421,6 +488,55 @@ function createSkyDome(track, isNight, isDesert, isSnow) {
             new BABYLON.LensFlare(0.1, 0.6, new BABYLON.Color3(1, 0.7, 0.3), null, lensFlareSystem);
             new BABYLON.LensFlare(0.2, 0.8, new BABYLON.Color3(0.9, 0.8, 0.5), null, lensFlareSystem);
         } catch(e) { /* lens flares optional */ }
+
+        // ── Procedural fluffy clouds for sunny tracks ──
+        if (!isDesert && !isSnow) {
+            const cloudCount = 14;
+            const cloudTex = new BABYLON.DynamicTexture("cloudTex", { width: 256, height: 128 }, scene, false);
+            const cctx = cloudTex.getContext();
+            // Draw soft cloud shape via overlapping radial gradients
+            cctx.clearRect(0, 0, 256, 128);
+            const drawPuff = (cx, cy, r, a) => {
+                const g = cctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+                g.addColorStop(0, `rgba(255,255,255,${a})`);
+                g.addColorStop(0.6, `rgba(255,255,255,${a * 0.55})`);
+                g.addColorStop(1, 'rgba(255,255,255,0)');
+                cctx.fillStyle = g; cctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+            };
+            drawPuff(80, 78, 50, 0.95);
+            drawPuff(130, 60, 55, 0.95);
+            drawPuff(180, 78, 48, 0.95);
+            drawPuff(110, 90, 40, 0.85);
+            drawPuff(165, 92, 36, 0.8);
+            cloudTex.update();
+            cloudTex.hasAlpha = true;
+
+            const cloudMat = new BABYLON.StandardMaterial("cloudMat", scene);
+            cloudMat.diffuseTexture = cloudTex;
+            cloudMat.diffuseTexture.hasAlpha = true;
+            cloudMat.useAlphaFromDiffuseTexture = true;
+            cloudMat.emissiveColor = new BABYLON.Color3(0.95, 0.96, 0.98);
+            cloudMat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+            cloudMat.specularColor = new BABYLON.Color3(0, 0, 0);
+            cloudMat.disableLighting = true;
+            cloudMat.backFaceCulling = false;
+            cloudMat.alphaMode = BABYLON.Engine.ALPHA_COMBINE;
+
+            for (let i = 0; i < cloudCount; i++) {
+                const ang = (i / cloudCount) * Math.PI * 2 + Math.random() * 0.4;
+                const r = 380 + Math.random() * 220;
+                const sizeW = 110 + Math.random() * 80;
+                const sizeH = sizeW * 0.5;
+                const cloud = BABYLON.MeshBuilder.CreatePlane("cloud" + i, {
+                    width: sizeW, height: sizeH, sideOrientation: BABYLON.Mesh.DOUBLESIDE
+                }, scene);
+                cloud.material = cloudMat;
+                cloud.position = new BABYLON.Vector3(Math.cos(ang) * r, 200 + Math.random() * 80, Math.sin(ang) * r);
+                cloud.billboardMode = BABYLON.Mesh.BILLBOARDMODE_Y;
+                cloud.renderingGroupId = 0;
+                cloud.alphaIndex = i;
+            }
+        }
     } else {
         // Night: subtle moon glow
         const moonDisc = BABYLON.MeshBuilder.CreateDisc("moonDisc", { radius: 15, tessellation: 32 }, scene);

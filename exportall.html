@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Re-Export All Tracks</title>
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+<script src="https://cdn.babylonjs.com/serializers/babylonjs.serializers.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 24px; background: #0a0a1a; color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; }
+  h1 { color: #ff6b35; }
+  button { background: #ff6b35; color: #fff; border: none; padding: 14px 24px; border-radius: 10px; font-weight: 800; cursor: pointer; font-size: 16px; letter-spacing: 1px; text-transform: uppercase; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  ol { font-size: 14px; line-height: 1.8; }
+  li.done { color: #2ecc71; }
+  li.active { color: #ff6b35; font-weight: 700; }
+  #cv { position: fixed; bottom: 20px; right: 20px; width: 320px; height: 200px; border: 2px solid rgba(255,107,53,0.4); border-radius: 8px; background: #000; }
+  #log { font-family: monospace; font-size: 12px; color: #aaa; margin-top: 16px; }
+</style>
+</head>
+<body>
+<h1>Re-export all 10 tracks as GLB</h1>
+<p>Hit the button. Each track renders, exports, and downloads in sequence. Browsers usually warn about multiple downloads — click "Allow" when prompted. Total time ≈ 30 seconds.</p>
+<button id="go">⬇ Export All</button>
+<ol id="list"></ol>
+<div id="log"></div>
+<canvas id="cv"></canvas>
+
+<script src="js/config.js?v=exp"></script>
+<script>
+const list = document.getElementById('list');
+const log = document.getElementById('log');
+const goBtn = document.getElementById('go');
+const canvas = document.getElementById('cv');
+TRACKS.forEach((t, i) => {
+    const li = document.createElement('li');
+    li.id = 'li-' + i;
+    li.textContent = t.name;
+    list.appendChild(li);
+});
+
+function hexToColor3(h) { return new BABYLON.Color3(((h>>16)&255)/255, ((h>>8)&255)/255, (h&255)/255); }
+function fileSafe(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, antialias: true });
+const scene = new BABYLON.Scene(engine);
+scene.useRightHandedSystem = true;
+
+const camera = new BABYLON.ArcRotateCamera('c', -Math.PI/2, Math.PI/4.5, 850, BABYLON.Vector3.Zero(), scene);
+camera.fov = 0.7; camera.minZ = 1; camera.maxZ = 4000;
+
+new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0,1,0), scene).intensity = 0.95;
+const dir = new BABYLON.DirectionalLight('d', new BABYLON.Vector3(-0.4,-0.8,-0.3), scene);
+dir.intensity = 0.7;
+
+engine.runRenderLoop(() => scene.render());
+
+// Replicate the trackview path math (stays in sync via shared config)
+function trackShape(td) {
+    if (td.trackModel) {
+        return { h1: 3, h2: 5, ph1: 0, ph2: 0, a1: 60, a2: 30,
+                 h3: 1, ph3a: 0, a3: 0, xScale: 1, zScale: 1, rot: 0, ph3: 0 };
+    }
+    let h = 0; const nm = td.name || '';
+    for (let i = 0; i < nm.length; i++) h = ((h * 31) + nm.charCodeAt(i)) | 0;
+    h = h >>> 0;
+    return {
+        h1: 2 + (h & 7), h2: 3 + ((h >> 3) & 7), h3: 1 + ((h >> 26) & 1),
+        ph1: ((h >> 6) & 15) * 0.4, ph2: ((h >> 10) & 15) * 0.4, ph3a: ((h >> 24) & 7) * 0.7,
+        a1: 30 + ((h >> 14) & 31), a2: 15 + ((h >> 19) & 23), a3: 20 + ((h >> 27) & 15),
+        xScale: 0.7 + ((h >> 16) & 7) * 0.10, zScale: 0.7 + ((h >> 28) & 7) * 0.10,
+        rot: ((h >> 12) & 7) * (Math.PI / 4),
+        ph3: ((h >> 22) & 15) * 0.5,
+    };
+}
+function trackPath(td) {
+    const n = td.segments, R = 200;
+    const sh = trackShape(td);
+    const cR = Math.cos(sh.rot), sR = Math.sin(sh.rot);
+    const c = [];
+    const f1 = (typeof F1_TRACK_SHAPES !== 'undefined') ? F1_TRACK_SHAPES[td.name] : null;
+    if (f1 && f1.length >= 6) {
+        const fr = (typeof F1_TRACK_RADIUS !== 'undefined') ? F1_TRACK_RADIUS : R;
+        const coarse = f1.map((p, i) => {
+            const t = i / f1.length * Math.PI * 2;
+            const y = Math.sin(t * 2 + sh.ph3) * td.hills * 15 + Math.cos(t * 4) * td.hills * 8;
+            return new BABYLON.Vector3(p[0] * fr, Math.max(y, 0.5), p[1] * fr);
+        });
+        // Catmull-Rom densify
+        const sub = 4;
+        for (let i = 0; i < coarse.length; i++) {
+            const p0 = coarse[(i-1+coarse.length)%coarse.length];
+            const p1 = coarse[i];
+            const p2 = coarse[(i+1)%coarse.length];
+            const p3 = coarse[(i+2)%coarse.length];
+            for (let s = 0; s < sub; s++) {
+                const t = s/sub, t2 = t*t, t3 = t2*t;
+                const x = 0.5 * ((2*p1.x) + (-p0.x+p2.x)*t + (2*p0.x-5*p1.x+4*p2.x-p3.x)*t2 + (-p0.x+3*p1.x-3*p2.x+p3.x)*t3);
+                const y = 0.5 * ((2*p1.y) + (-p0.y+p2.y)*t + (2*p0.y-5*p1.y+4*p2.y-p3.y)*t2 + (-p0.y+3*p1.y-3*p2.y+p3.y)*t3);
+                const z = 0.5 * ((2*p1.z) + (-p0.z+p2.z)*t + (2*p0.z-5*p1.z+4*p2.z-p3.z)*t2 + (-p0.z+3*p1.z-3*p2.z+p3.z)*t3);
+                c.push(new BABYLON.Vector3(x, Math.max(y,0.3), z));
+            }
+        }
+        return c;
+    }
+    // Fallback hashed-shape (only used if not in F1_TRACK_SHAPES)
+    for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2;
+        const w = Math.sin(a * sh.h1 + sh.ph1) * td.maxCurve * sh.a1
+                + Math.cos(a * sh.h2 + sh.ph2) * td.maxCurve * sh.a2
+                + Math.sin(a * sh.h3 + sh.ph3a) * td.maxCurve * sh.a3;
+        const r = R + w;
+        const ux = Math.cos(a) * r * sh.xScale;
+        const uz = Math.sin(a) * r * sh.zScale;
+        const x = ux * cR - uz * sR;
+        const z = ux * sR + uz * cR;
+        const y = Math.sin(a * 2 + sh.ph3) * td.hills * 15 + Math.cos(a * 4) * td.hills * 8;
+        c.push(new BABYLON.Vector3(x, Math.max(y,0.5), z));
+    }
+    return c;
+}
+
+function buildScene(t) {
+    // Wipe everything except camera + lights
+    const keep = ['c', 'h', 'd'];
+    [...scene.meshes].forEach(m => { if (!keep.includes(m.name)) m.dispose(); });
+    [...scene.materials].forEach(m => { try { m.dispose(); } catch(e) {} });
+
+    // Sky tint
+    scene.clearColor = new BABYLON.Color4(((t.skyColor>>16)&255)/255*0.55, ((t.skyColor>>8)&255)/255*0.55, (t.skyColor&255)/255*0.55, 1);
+
+    const ground = BABYLON.MeshBuilder.CreateGround('g', { width: 1400, height: 1400 }, scene);
+    const gm = new BABYLON.StandardMaterial('gm', scene);
+    gm.diffuseColor = hexToColor3(t.groundColor);
+    gm.specularColor = new BABYLON.Color3(0,0,0);
+    ground.material = gm; ground.position.y = -0.5;
+
+    const path = trackPath(t);
+    const hw = (t.trackWidth || 14) / 2;
+    const left = [], right = [];
+    for (let i = 0; i < path.length; i++) {
+        const p = path[i], np = path[(i+1)%path.length];
+        const dx = np.x - p.x, dz = np.z - p.z, len = Math.sqrt(dx*dx+dz*dz) || 1;
+        const rx = dz/len, rz = -dx/len;
+        left.push(new BABYLON.Vector3(p.x - rx*hw, p.y + 0.06, p.z - rz*hw));
+        right.push(new BABYLON.Vector3(p.x + rx*hw, p.y + 0.06, p.z + rz*hw));
+    }
+    left.push(left[0]); right.push(right[0]);
+    const ribbon = BABYLON.MeshBuilder.CreateRibbon('rb', { pathArray: [left, right], closeArray: false, closePath: false, sideOrientation: BABYLON.Mesh.DOUBLESIDE }, scene);
+    const rm = new BABYLON.StandardMaterial('rm', scene);
+    rm.diffuseColor = new BABYLON.Color3(0.18, 0.19, 0.22);
+    rm.specularColor = new BABYLON.Color3(0.05,0.05,0.05);
+    ribbon.material = rm;
+
+    // Edge lines
+    BABYLON.MeshBuilder.CreateLines('el', { points: left.map(p => new BABYLON.Vector3(p.x, p.y+0.02, p.z)) }, scene).color = new BABYLON.Color3(1, 0.42, 0.15);
+    BABYLON.MeshBuilder.CreateLines('er', { points: right.map(p => new BABYLON.Vector3(p.x, p.y+0.02, p.z)) }, scene).color = new BABYLON.Color3(1, 0.42, 0.15);
+
+    // Start marker
+    const sm = BABYLON.MeshBuilder.CreateBox('sm', { width: hw*2+1, height: 0.4, depth: 1.2 }, scene);
+    const smm = new BABYLON.StandardMaterial('smm', scene);
+    smm.diffuseColor = new BABYLON.Color3(1,1,1);
+    smm.emissiveColor = new BABYLON.Color3(0.4,0.4,0.4);
+    sm.material = smm;
+    if (path.length) {
+        const p0 = path[0], p1 = path[1] || p0;
+        sm.position.set(p0.x, p0.y + 0.1, p0.z);
+        sm.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
+    }
+}
+
+goBtn.addEventListener('click', async () => {
+    goBtn.disabled = true;
+    log.textContent = 'Starting…';
+    for (let i = 0; i < TRACKS.length; i++) {
+        const t = TRACKS[i];
+        document.getElementById('li-' + i).classList.add('active');
+        log.textContent = `[${i+1}/${TRACKS.length}] ${t.name} — building…`;
+        buildScene(t);
+        await sleep(400); // let lights / matrices settle
+        log.textContent = `[${i+1}/${TRACKS.length}] ${t.name} — exporting GLB…`;
+        try {
+            const glb = await BABYLON.GLTF2Export.GLBAsync(scene, `track-${i+1}-${fileSafe(t.name)}`);
+            glb.downloadFiles();
+        } catch (e) {
+            log.textContent = `Export failed for ${t.name}: ${e.message}`;
+        }
+        document.getElementById('li-' + i).classList.remove('active');
+        document.getElementById('li-' + i).classList.add('done');
+        await sleep(800); // gap so the browser handles each download
+    }
+    log.textContent = '✓ All 10 tracks exported. Move them from Downloads/ into models/.';
+    goBtn.disabled = false;
+});
+</script>
+</body>
+</html>

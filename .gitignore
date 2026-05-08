@@ -1,0 +1,26 @@
+# Claude Code workspace state
+.claude/
+
+# Cloudflare Pages deploy cache
+.wrangler/
+
+# Live user-account data (contains hashed passwords + XP)
+users.json
+
+# Temp files from Draco compression / experiments
+_tmp_*.glb
+*.tmp
+
+# OS
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+
+# Node (in case anything pulls deps in)
+node_modules/
+package-lock.json
+
+# Background server / tunnel logs
+*.log

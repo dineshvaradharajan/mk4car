@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>Track Preview</title>
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+<script src="https://cdn.babylonjs.com/serializers/babylonjs.serializers.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a0a1a; color: #fff; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
+  #cv { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; outline: none; display: block; }
+  #hdr { position: fixed; top: 12px; left: 12px; right: 12px; z-index: 10; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; pointer-events: none; }
+  #title { background: rgba(0,0,0,.65); backdrop-filter: blur(8px); padding: 10px 16px; border-radius: 10px; border: 1px solid rgba(255,107,53,.35); font-weight: 800; font-size: 18px; color: #ff6b35; }
+  #stats { background: rgba(0,0,0,.6); backdrop-filter: blur(8px); padding: 8px 14px; border-radius: 10px; font-size: 13px; color: #ddd; }
+  #strip { position: fixed; bottom: 12px; left: 12px; right: 12px; z-index: 10; display: flex; gap: 6px; overflow-x: auto; padding: 8px; background: rgba(0,0,0,.55); backdrop-filter: blur(8px); border-radius: 10px; pointer-events: auto; }
+  #strip a { color: #aaa; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 12px; white-space: nowrap; border: 1px solid rgba(255,255,255,.06); }
+  #strip a:hover { background: rgba(255,107,53,.15); color: #fff; border-color: rgba(255,107,53,.4); }
+  #strip a.active { background: #ff6b35; color: #fff; border-color: #ff6b35; }
+  .hint { position: fixed; bottom: 60px; right: 16px; z-index: 10; background: rgba(0,0,0,.55); backdrop-filter: blur(8px); padding: 6px 12px; border-radius: 8px; font-size: 11px; color: #aaa; }
+  #edit-panel { position: fixed; top: 70px; right: 12px; z-index: 10; width: 280px; background: rgba(0,0,0,.7); backdrop-filter: blur(10px); padding: 14px 16px; border-radius: 10px; border: 1px solid rgba(255,107,53,.3); pointer-events: auto; max-height: calc(100vh - 200px); overflow-y: auto; display: none; }
+  #edit-panel.open { display: block; }
+  #edit-panel h3 { font-size: 12px; letter-spacing: 2px; color: #ff6b35; margin: 0 0 10px; }
+  #edit-panel label { display: block; font-size: 11px; color: #aaa; margin-top: 10px; letter-spacing: 1px; text-transform: uppercase; }
+  #edit-panel input[type=range], #edit-panel input[type=text] { width: 100%; margin-top: 4px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: #fff; border-radius: 4px; padding: 4px 6px; font-size: 12px; box-sizing: border-box; }
+  #edit-panel input[type=color] { width: 100%; height: 28px; margin-top: 4px; background: transparent; border: 1px solid rgba(255,255,255,.15); border-radius: 4px; cursor: pointer; }
+  #edit-panel .row-val { float: right; color: #fff; font-weight: 700; font-size: 12px; }
+  #edit-panel button { margin-top: 12px; padding: 8px 12px; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: 1px; cursor: pointer; text-transform: uppercase; }
+  #edit-panel .btn-primary { background: #ff6b35; color: #fff; width: 100%; }
+  #edit-panel .btn-secondary { background: rgba(255,255,255,.1); color: #fff; width: 100%; margin-top: 6px; }
+  #edit-panel pre { background: #000; color: #ff6b35; padding: 8px; border-radius: 4px; font-size: 10px; white-space: pre-wrap; word-break: break-all; margin-top: 8px; max-height: 120px; overflow-y: auto; }
+  #place-toolbar { position: fixed; top: 70px; left: 12px; z-index: 10; background: rgba(0,0,0,.7); backdrop-filter: blur(10px); padding: 12px; border-radius: 10px; border: 1px solid rgba(255,107,53,.3); pointer-events: auto; display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 200px); overflow-y: auto; }
+  #place-toolbar h3 { font-size: 11px; letter-spacing: 2px; color: #ff6b35; margin: 0 0 4px; }
+  #place-toolbar button { padding: 8px 14px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: #fff; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 1px; text-align: left; min-width: 130px; }
+  #place-toolbar button:hover { background: rgba(255,107,53,.18); border-color: rgba(255,107,53,.5); }
+  #place-toolbar button.active { background: #ff6b35; border-color: #ff6b35; color: #fff; }
+  #place-toolbar .hint-line { font-size: 10px; color: #aaa; margin-top: 4px; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="hdr">
+  <div id="title">…</div>
+  <div id="stats"></div>
+  <button id="toggle-edit" style="pointer-events:auto;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);padding:8px 14px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:1px;text-transform:uppercase">✎ EDIT</button>
+  <button id="dl-png" style="pointer-events:auto;background:#ff6b35;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:1px;text-transform:uppercase">⬇ PNG</button>
+  <button id="dl-glb" style="pointer-events:auto;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2);padding:8px 14px;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;letter-spacing:1px;text-transform:uppercase">⬇ GLB</button>
+</div>
+
+<div id="place-toolbar">
+  <h3>PLACE OBJECTS</h3>
+  <button data-tool="tree">🌲 Tree</button>
+  <button data-tool="palm">🌴 Palm tree</button>
+  <button data-tool="autumn">🍂 Autumn tree</button>
+  <button data-tool="ramp">🛹 Ramp</button>
+  <button data-tool="hill">⛰ Hill</button>
+  <button data-tool="mountain">🏔 Mountain</button>
+  <button data-tool="hut">🛖 Hut</button>
+  <button data-tool="building">🏢 Building</button>
+  <button data-tool="pyramid">🔺 Pyramid</button>
+  <button data-tool="sphinx">🦁 Sphinx</button>
+  <button data-tool="cactus">🌵 Cactus</button>
+  <button data-tool="rock">🪨 Rock</button>
+  <button data-tool="water">🌊 Water</button>
+  <button data-tool="lava">🔥 Lava pool</button>
+  <button data-tool="">✋ Drag camera</button>
+  <button id="clear-placed" style="background:rgba(231,76,60,.18);border-color:rgba(231,76,60,.5)">✕ Clear</button>
+  <div class="hint-line">Click ground to place · right-click to delete</div>
+</div>
+
+<div id="edit-panel">
+  <h3>EDIT TRACK</h3>
+  <label>Name <input type="text" id="ed-name"></label>
+  <label>Track Width <span class="row-val" id="ed-width-v"></span><input type="range" id="ed-width" min="8" max="22" step="1"></label>
+  <label>Segments (turns/length) <span class="row-val" id="ed-seg-v"></span><input type="range" id="ed-seg" min="20" max="80" step="1"></label>
+  <label>Curviness <span class="row-val" id="ed-curve-v"></span><input type="range" id="ed-curve" min="0" max="2" step="0.05"></label>
+  <label>Hilliness <span class="row-val" id="ed-hills-v"></span><input type="range" id="ed-hills" min="0" max="1.5" step="0.05"></label>
+  <label>Fog Density <span class="row-val" id="ed-fog-v"></span><input type="range" id="ed-fog" min="0" max="0.01" step="0.0002"></label>
+  <label>Sky Color <input type="color" id="ed-sky"></label>
+  <label>Ground Color <input type="color" id="ed-ground"></label>
+  <label>Fog Color <input type="color" id="ed-fogcol"></label>
+  <button class="btn-primary" id="ed-copy">COPY CONFIG JSON</button>
+  <button class="btn-secondary" id="ed-reset">RESET TO DEFAULT</button>
+  <pre id="ed-json"></pre>
+</div>
+<div class="hint">drag to rotate · scroll to zoom</div>
+<div id="strip"></div>
+
+<script src="js/config.js?v=trv"></script>
+<script>
+function hexToColor3(h) { return new BABYLON.Color3(((h>>16)&255)/255, ((h>>8)&255)/255, (h&255)/255); }
+
+// Per-track hashed harmonics — same in track.js / login.js / preview.js
+function trackShape(td) {
+    if (td.trackModel) {
+        return { h1: 3, h2: 5, ph1: 0, ph2: 0, a1: 60, a2: 30,
+                 h3: 1, ph3a: 0, a3: 0, xScale: 1, zScale: 1, rot: 0, ph3: 0 };
+    }
+    let h = 0; const nm = td.name || '';
+    for (let i = 0; i < nm.length; i++) h = ((h * 31) + nm.charCodeAt(i)) | 0;
+    h = h >>> 0;
+    return {
+        h1: 2 + (h & 7), h2: 3 + ((h >> 3) & 7), h3: 1 + ((h >> 26) & 1),
+        ph1: ((h >> 6) & 15) * 0.4, ph2: ((h >> 10) & 15) * 0.4, ph3a: ((h >> 24) & 7) * 0.7,
+        a1: 30 + ((h >> 14) & 31), a2: 15 + ((h >> 19) & 23), a3: 20 + ((h >> 27) & 15),
+        xScale: 0.7 + ((h >> 16) & 7) * 0.10, zScale: 0.7 + ((h >> 28) & 7) * 0.10,
+        rot: ((h >> 12) & 7) * (Math.PI / 4),
+        ph3: ((h >> 22) & 15) * 0.5,
+    };
+}
+
+// Catmull-Rom curve identical to track.js / preview.js
+function trackPath(td) {
+    const n = td.segments, R = 200;
+    const sh = trackShape(td);
+    const cR = Math.cos(sh.rot), sR = Math.sin(sh.rot);
+    const c = [];
+    const f1 = (typeof F1_TRACK_SHAPES !== 'undefined')
+        ? F1_TRACK_SHAPES[td.name] : null;
+    if (f1 && f1.length >= 6) {
+        const fr = (typeof F1_TRACK_RADIUS !== 'undefined') ? F1_TRACK_RADIUS : R;
+        for (let i = 0; i < f1.length; i++) {
+            const [nx, nz] = f1[i];
+            const t = i / f1.length * Math.PI * 2;
+            const y = Math.sin(t * 2 + sh.ph3) * td.hills * 15 + Math.cos(t * 4) * td.hills * 8;
+            c.push(new BABYLON.Vector3(nx * fr, Math.max(y,0.5), nz * fr));
+        }
+    } else {
+    for (let i = 0; i < n; i++) {
+        const a = i / n * Math.PI * 2;
+        const w = Math.sin(a * sh.h1 + sh.ph1) * td.maxCurve * sh.a1
+                + Math.cos(a * sh.h2 + sh.ph2) * td.maxCurve * sh.a2
+                + Math.sin(a * sh.h3 + sh.ph3a) * td.maxCurve * sh.a3;
+        const r = R + w;
+        const ux = Math.cos(a) * r * sh.xScale;
+        const uz = Math.sin(a) * r * sh.zScale;
+        const x = ux * cR - uz * sR;
+        const z = ux * sR + uz * cR;
+        const y = Math.sin(a * 2 + sh.ph3) * td.hills * 15 + Math.cos(a * 4) * td.hills * 8;
+        c.push(new BABYLON.Vector3(x, Math.max(y,0.5), z));
+    }
+    }
+    const sub = 4, out = [];
+    for (let i = 0; i < c.length; i++) {
+        const p0 = c[(i-1+c.length)%c.length], p1 = c[i], p2 = c[(i+1)%c.length], p3 = c[(i+2)%c.length];
+        for (let s = 0; s < sub; s++) {
+            const t = s/sub, t2 = t*t, t3 = t2*t;
+            const x = 0.5 * ((2*p1.x) + (-p0.x+p2.x)*t + (2*p0.x-5*p1.x+4*p2.x-p3.x)*t2 + (-p0.x+3*p1.x-3*p2.x+p3.x)*t3);
+            const y = 0.5 * ((2*p1.y) + (-p0.y+p2.y)*t + (2*p0.y-5*p1.y+4*p2.y-p3.y)*t2 + (-p0.y+3*p1.y-3*p2.y+p3.y)*t3);
+            const z = 0.5 * ((2*p1.z) + (-p0.z+p2.z)*t + (2*p0.z-5*p1.z+4*p2.z-p3.z)*t2 + (-p0.z+3*p1.z-3*p2.z+p3.z)*t3);
+            out.push(new BABYLON.Vector3(x, Math.max(y,0.3), z));
+        }
+    }
+    return out;
+}
+
+function turnsCount(pts) {
+    const n = pts.length; let t = 0, ls = 0;
+    for (let i = 0; i < n; i++) {
+        const p0 = pts[(i-1+n)%n], p1 = pts[i], p2 = pts[(i+1)%n];
+        const ax = p1.x-p0.x, az = p1.z-p0.z, bx = p2.x-p1.x, bz = p2.z-p1.z;
+        const cross = ax*bz - az*bx;
+        const mag = Math.sqrt(ax*ax+az*az)*Math.sqrt(bx*bx+bz*bz) || 1;
+        const k = cross/mag;
+        const s = k > 0.06 ? 1 : k < -0.06 ? -1 : 0;
+        if (s !== 0 && s !== ls) { t++; ls = s; }
+    }
+    return t;
+}
+
+const canvas = document.getElementById('cv');
+const engine = new BABYLON.Engine(canvas, true, { antialias: true, alpha: true });
+const scene = new BABYLON.Scene(engine);
+scene.useRightHandedSystem = true;
+
+const camera = new BABYLON.ArcRotateCamera('c', -Math.PI/2, Math.PI/4.5, 850, BABYLON.Vector3.Zero(), scene);
+camera.fov = 0.7; camera.minZ = 1; camera.maxZ = 4000;
+camera.lowerRadiusLimit = 200; camera.upperRadiusLimit = 2500;
+camera.wheelPrecision = 1.5;
+camera.attachControl(canvas, true);
+
+const hemi = new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0,1,0), scene);
+hemi.intensity = 0.95;
+const dir = new BABYLON.DirectionalLight('d', new BABYLON.Vector3(-0.4,-0.8,-0.3), scene);
+dir.intensity = 0.7;
+
+let _autoSpin = true, _idle = 0;
+canvas.addEventListener('pointerdown', () => _idle = performance.now());
+canvas.addEventListener('pointermove', e => { if (e.buttons) _idle = performance.now(); });
+canvas.addEventListener('wheel', () => _idle = performance.now(), { passive: true });
+
+let trackIdx = parseInt(new URLSearchParams(location.search).get('track') || '0', 10);
+trackIdx = Math.max(0, Math.min(TRACKS.length - 1, trackIdx));
+
+function buildStrip() {
+    const strip = document.getElementById('strip');
+    strip.innerHTML = '';
+    TRACKS.forEach((t, i) => {
+        const a = document.createElement('a');
+        a.href = '?track=' + i;
+        a.textContent = (i + 1) + '. ' + t.name;
+        if (i === trackIdx) a.classList.add('active');
+        strip.appendChild(a);
+    });
+}
+
+function buildScene() {
+    const t = TRACKS[trackIdx];
+    document.title = t.name + ' — Track Preview';
+    document.getElementById('title').textContent = t.name;
+    const path = trackPath(t);
+    const turns = turnsCount(path);
+    let length = 0;
+    for (let i = 1; i < path.length; i++) length += BABYLON.Vector3.Distance(path[i-1], path[i]);
+    document.getElementById('stats').innerHTML =
+        `<b style="color:#fff">${t.difficulty}</b> · <b style="color:#fff">${turns}</b> turns · <b style="color:#fff">${Math.round(length)}m</b> / lap · width ${t.trackWidth}m`;
+
+    // Sky tint
+    scene.clearColor = new BABYLON.Color4(((t.skyColor>>16)&255)/255*0.55, ((t.skyColor>>8)&255)/255*0.55, (t.skyColor&255)/255*0.55, 1);
+
+    // Ground
+    const ground = BABYLON.MeshBuilder.CreateGround('g', { width: 1400, height: 1400, subdivisions: 1 }, scene);
+    const gm = new BABYLON.StandardMaterial('gm', scene);
+    gm.diffuseColor = hexToColor3(t.groundColor);
+    gm.specularColor = new BABYLON.Color3(0,0,0);
+    ground.material = gm; ground.position.y = -0.5;
+
+    // Build asphalt ribbon
+    const hw = (t.trackWidth || 14) / 2;
+    const left = [], right = [];
+    for (let i = 0; i < path.length; i++) {
+        const p = path[i], np = path[(i+1)%path.length];
+        const dx = np.x - p.x, dz = np.z - p.z, len = Math.sqrt(dx*dx+dz*dz) || 1;
+        const rx = dz/len, rz = -dx/len;
+        left.push(new BABYLON.Vector3(p.x - rx*hw, p.y + 0.06, p.z - rz*hw));
+        right.push(new BABYLON.Vector3(p.x + rx*hw, p.y + 0.06, p.z + rz*hw));
+    }
+    left.push(left[0]); right.push(right[0]);
+    const ribbon = BABYLON.MeshBuilder.CreateRibbon('rb', { pathArray: [left, right], closeArray: false, closePath: false, sideOrientation: BABYLON.Mesh.DOUBLESIDE }, scene);
+    const rm = new BABYLON.StandardMaterial('rm', scene);
+    rm.diffuseColor = new BABYLON.Color3(0.18, 0.19, 0.22);
+    rm.specularColor = new BABYLON.Color3(0.05,0.05,0.05);
+    ribbon.material = rm;
+
+    // Edge lines
+    const edgeL = BABYLON.MeshBuilder.CreateLines('el', { points: left.map(p => new BABYLON.Vector3(p.x, p.y+0.02, p.z)) }, scene);
+    edgeL.color = new BABYLON.Color3(1, 0.42, 0.15);
+    const edgeR = BABYLON.MeshBuilder.CreateLines('er', { points: right.map(p => new BABYLON.Vector3(p.x, p.y+0.02, p.z)) }, scene);
+    edgeR.color = new BABYLON.Color3(1, 0.42, 0.15);
+
+    // Start marker
+    const sm = BABYLON.MeshBuilder.CreateBox('sm', { width: hw*2+1, height: 0.4, depth: 1.2 }, scene);
+    const smMat = new BABYLON.StandardMaterial('smm', scene);
+    smMat.diffuseColor = new BABYLON.Color3(1,1,1);
+    smMat.emissiveColor = new BABYLON.Color3(0.4,0.4,0.4);
+    sm.material = smMat;
+    if (path.length) {
+        const p0 = path[0], p1 = path[1] || p0;
+        sm.position.set(p0.x, p0.y + 0.1, p0.z);
+        sm.rotation.y = Math.atan2(p1.x - p0.x, p1.z - p0.z);
+    }
+
+    addBiomeScenery(t, path, hw);
+}
+
+function mkMat(name, diff, emis, dl) {
+    const m = new BABYLON.StandardMaterial(name, scene);
+    m.diffuseColor = new BABYLON.Color3(diff[0], diff[1], diff[2]);
+    if (emis) m.emissiveColor = new BABYLON.Color3(emis[0], emis[1], emis[2]);
+    m.specularColor = new BABYLON.Color3(0.05,0.05,0.05);
+    if (dl) m.disableLighting = true;
+    return m;
+}
+
+function addBiomeScenery(t, path, hw) {
+    const name = t.name;
+    const isCity = name === 'Night City' || name === 'Midnight Highway';
+    const isDesert = name === 'Desert Storm';
+    const isVolcano = name === 'Volcano Ring';
+    const isSnow = name === 'Snow Peak' || name === 'Thunder Mountain';
+    const isTropical = name === 'Tropical Island';
+    const isCoastal = name === 'Coastal Drive';
+    const isForest = name === 'Autumn Forest';
+    const isSunny = name === 'Sunny Valley';
+
+    let seed = 1234;
+    const rand = () => { seed = (seed*9301+49297)%233280; return seed/233280; };
+    const samples = path.filter((_,i) => i%3===0);
+    const nearTrack = (x, z, m) => {
+        const m2 = (m||hw+4)**2;
+        for (const p of samples) { const dx=p.x-x, dz=p.z-z; if (dx*dx+dz*dz < m2) return true; }
+        return false;
+    };
+    const pickSpot = (innerR, outerR, m) => {
+        for (let tries = 0; tries < 12; tries++) {
+            const a = rand()*Math.PI*2, r = innerR + rand()*(outerR-innerR);
+            const x = Math.cos(a)*r, z = Math.sin(a)*r;
+            if (!nearTrack(x, z, m)) return { x, z };
+        } return null;
+    };
+
+    const trunkMat = mkMat('trunk', [0.32,0.20,0.12]);
+    const pineMat = mkMat('pine', [0.10,0.42,0.16]);
+    const autumnMat = mkMat('autumn', [0.85,0.42,0.10]);
+    const palmLeafMat = mkMat('palm', [0.18,0.55,0.18]);
+    const cactusMat = mkMat('cactus', [0.18,0.45,0.18]);
+    const sandMat = mkMat('sand', [0.86,0.72,0.42]);
+    const stoneMat = mkMat('stone', [0.55,0.48,0.36]);
+    const sphinxMat = mkMat('sphinx', [0.78,0.62,0.36]);
+    const snowMat = mkMat('snow', [0.96,0.97,1.0], [0.05,0.06,0.08]);
+    const rockMat = mkMat('rock', [0.32,0.30,0.30]);
+    const lavaMat = mkMat('lava', [0,0,0], [1.0,0.32,0.05], true);
+    const buildingMat = mkMat('bldg', [0.22,0.24,0.30], [0.04,0.05,0.08]);
+    const waterMat = mkMat('water', [0,0,0], [0.10,0.40,0.72], true);
+
+    const addPine = (x, z, sc, mat) => {
+        const tr = BABYLON.MeshBuilder.CreateCylinder('t', { diameterTop: 0.5*sc, diameterBottom: 0.7*sc, height: 4*sc, tessellation: 8 }, scene);
+        tr.material = trunkMat; tr.position.set(x, 2*sc, z);
+        const co = BABYLON.MeshBuilder.CreateCylinder('p', { diameterTop: 0, diameterBottom: 5*sc, height: 9*sc, tessellation: 12 }, scene);
+        co.material = mat; co.position.set(x, 4*sc + 4.5*sc, z);
+    };
+    const addPalm = (x, z, sc) => {
+        const tr = BABYLON.MeshBuilder.CreateCylinder('pt', { diameterTop: 0.4*sc, diameterBottom: 0.7*sc, height: 7*sc, tessellation: 8 }, scene);
+        tr.material = trunkMat; tr.position.set(x, 3.5*sc, z);
+        for (let i = 0; i < 6; i++) {
+            const lf = BABYLON.MeshBuilder.CreatePlane('lf', { width: 6*sc, height: 1.4*sc, sideOrientation: BABYLON.Mesh.DOUBLESIDE }, scene);
+            lf.material = palmLeafMat; lf.position.set(x, 7*sc, z);
+            lf.rotation.y = (i/6)*Math.PI*2; lf.rotation.z = -0.4;
+        }
+    };
+    const addCactus = (x, z, sc) => {
+        const b = BABYLON.MeshBuilder.CreateCylinder('c', { diameter: 1.3*sc, height: 5*sc, tessellation: 10 }, scene);
+        b.material = cactusMat; b.position.set(x, 2.5*sc, z);
+        for (const sd of [-1, 1]) {
+            const arm = BABYLON.MeshBuilder.CreateCylinder('ca', { diameter: 0.9*sc, height: 2.5*sc, tessellation: 8 }, scene);
+            arm.material = cactusMat; arm.position.set(x + sd*1.0*sc, 3.7*sc, z); arm.rotation.z = sd*0.5;
+            const au = BABYLON.MeshBuilder.CreateCylinder('cu', { diameter: 0.85*sc, height: 1.6*sc, tessellation: 8 }, scene);
+            au.material = cactusMat; au.position.set(x + sd*1.5*sc, 4.6*sc, z);
+        }
+    };
+    const addPyramid = (x, z, base, h) => {
+        const py = BABYLON.MeshBuilder.CreateCylinder('py', { diameterTop: 0, diameterBottom: base*1.414, height: h, tessellation: 4 }, scene);
+        py.material = sandMat; py.position.set(x, h/2, z); py.rotation.y = Math.PI/4;
+    };
+    const addSphinx = (x, z) => {
+        const root = new BABYLON.TransformNode('sx', scene); root.position.set(x, 0, z);
+        const body = BABYLON.MeshBuilder.CreateBox('sb', { width: 6, height: 5, depth: 18 }, scene);
+        body.material = sphinxMat; body.position.y = 2.5; body.parent = root;
+        const legs = BABYLON.MeshBuilder.CreateBox('sl', { width: 6, height: 3, depth: 6 }, scene);
+        legs.material = sphinxMat; legs.position.set(0,1.5,9); legs.parent = root;
+        const head = BABYLON.MeshBuilder.CreateBox('sh', { width: 3.6, height: 4, depth: 3.6 }, scene);
+        head.material = sphinxMat; head.position.set(0,7,7); head.parent = root;
+        for (const sd of [-1,1]) {
+            const dr = BABYLON.MeshBuilder.CreateBox('sd', { width: 1.5, height: 4, depth: 4 }, scene);
+            dr.material = sphinxMat; dr.position.set(sd*2.0, 6.5, 7); dr.parent = root;
+        }
+        const ped = BABYLON.MeshBuilder.CreateBox('sp', { width: 9, height: 1, depth: 24 }, scene);
+        ped.material = stoneMat; ped.position.set(0, 0.5, 4); ped.parent = root;
+    };
+    const addRock = (x, z, sc) => {
+        const r = BABYLON.MeshBuilder.CreateSphere('rk', { diameter: 3*sc, segments: 5 }, scene);
+        r.material = rockMat; r.position.set(x, 1.2*sc, z); r.scaling.y = 0.6;
+    };
+    const addBuilding = (x, z, w, h, d) => {
+        const b = BABYLON.MeshBuilder.CreateBox('bg', { width: w, height: h, depth: d }, scene);
+        b.material = buildingMat; b.position.set(x, h/2, z);
+        const top = BABYLON.MeshBuilder.CreateBox('bt', { width: w*1.02, height: 1.5, depth: d*1.02 }, scene);
+        const tm = mkMat('btm', [0,0,0], [1.0,0.7,0.2], true); top.material = tm; top.position.set(x, h-1.5, z);
+    };
+    const addPool = (x, z, r, mat) => {
+        const p = BABYLON.MeshBuilder.CreateDisc('pl', { radius: r, tessellation: 28 }, scene);
+        p.rotation.x = -Math.PI/2; p.position.set(x, 0.05, z); p.material = mat;
+    };
+    const addMountain = (x, z, h, base, snowy) => {
+        const m = BABYLON.MeshBuilder.CreateCylinder('mt', { diameterTop: 4, diameterBottom: base, height: h, tessellation: 18 }, scene);
+        m.material = snowy ? snowMat : rockMat; m.position.set(x, h/2, z);
+    };
+
+    if (isDesert) {
+        addPyramid(-260,-180,80,110); addPyramid(180,-300,65,90); addPyramid(310,220,55,75);
+        addSphinx(-280,240);
+        for (let i=0;i<30;i++){ const s=pickSpot(220,520,hw+12); if(s) addCactus(s.x,s.z,1+rand()*1.2); }
+        for (let i=0;i<25;i++){ const s=pickSpot(220,520,hw+8); if(s) addRock(s.x,s.z,1+rand()*1.5); }
+    } else if (isVolcano) {
+        // Short crater rim — tall walls block the camera, so this is just a
+        // visible lip ringing the track instead of a full crater chamber.
+        const rim = BABYLON.MeshBuilder.CreateTorus('cw', { diameter: 760, thickness: 16, tessellation: 56 }, scene);
+        rim.material = mkMat('cwm', [0.22,0.13,0.10], [0.06,0.02,0.01]);
+        rim.position.y = 8;
+        const lavaRing = BABYLON.MeshBuilder.CreateTorus('lr', { diameter: 700, thickness: 12, tessellation: 56 }, scene);
+        lavaRing.material = lavaMat; lavaRing.position.y = 0.5;
+        for (let i=0;i<8;i++){ const s=pickSpot(240,320,hw+10); if(s) addPool(s.x,s.z,6+rand()*8, lavaMat); }
+        for (let i=0;i<18;i++){ const s=pickSpot(240,340,hw+8); if(s) addRock(s.x,s.z,1.5+rand()*1.5); }
+        // Glowing lava cracks scattered on the ground inside the crater
+        for (let i=0;i<6;i++){ const s=pickSpot(220,300,hw+8); if(s) addPool(s.x,s.z,3+rand()*4, lavaMat); }
+    } else if (isSnow) {
+        addMountain(0,0,240,280,true);
+        for (let i=0;i<6;i++){ const a=(i/6)*Math.PI*2+0.4, r=145; addMountain(Math.cos(a)*r, Math.sin(a)*r, 30+(i%3)*6, 30+(i%3)*6, true); }
+        for (let i=0;i<24;i++){ const s=pickSpot(240,480,hw+8); if(s) addPine(s.x,s.z,0.9+rand()*0.6, snowMat); }
+    } else if (isCity) {
+        for (let i=0;i<32;i++){ const s=pickSpot(230,520,hw+10); if(s) addBuilding(s.x,s.z,12+rand()*16,30+rand()*80,12+rand()*16); }
+    } else if (isForest) {
+        addPool(-280,260,50, waterMat);
+        for (let i=0;i<70;i++){ const s=pickSpot(230,520,hw+6); if(s) addPine(s.x,s.z,0.9+rand()*0.7, rand()<0.45?autumnMat:pineMat); }
+    } else if (isTropical || isCoastal) {
+        const ocean = BABYLON.MeshBuilder.CreateDisc('oc', { radius: 520, tessellation: 48 }, scene);
+        ocean.rotation.x = -Math.PI/2; ocean.position.y = -0.3;
+        ocean.material = mkMat('om', [0,0,0], [0.10,0.42,0.78], true);
+        const isl = BABYLON.MeshBuilder.CreateDisc('is', { radius: 320, tessellation: 48 }, scene);
+        isl.rotation.x = -Math.PI/2; isl.position.y = -0.2;
+        isl.material = mkMat('im', [0.86,0.78,0.50]);
+        for (let i=0;i<30;i++){ const s=pickSpot(230,305,hw+8); if(s) addPalm(s.x,s.z,0.9+rand()*0.6); }
+    } else {
+        if (isSunny) addPool(-280,-260,70, waterMat);
+        for (let i=0;i<40;i++){ const s=pickSpot(230,520,hw+8); if(s) addPine(s.x,s.z,0.9+rand()*0.7, pineMat); }
+    }
+}
+
+function fileSafe(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+
+document.getElementById('dl-png').addEventListener('click', () => {
+    const name = TRACKS[trackIdx].name;
+    BABYLON.Tools.CreateScreenshotUsingRenderTarget(engine, camera, { width: 2560, height: 1440 }, (data) => {
+        const a = document.createElement('a');
+        a.href = data;
+        a.download = `track-${trackIdx + 1}-${fileSafe(name)}.png`;
+        a.click();
+    });
+});
+
+document.getElementById('dl-glb').addEventListener('click', async () => {
+    const name = TRACKS[trackIdx].name;
+    if (!BABYLON.GLTF2Export) { alert('GLB exporter failed to load'); return; }
+    try {
+        const glb = await BABYLON.GLTF2Export.GLBAsync(scene, `track-${trackIdx + 1}-${fileSafe(name)}`);
+        glb.downloadFiles();
+    } catch (e) {
+        alert('GLB export failed: ' + e.message);
+    }
+});
+
+buildStrip();
+buildScene();
+
+// ── Edit panel ─────────────────────────────────────────────────────
+const _origTrackJSON = JSON.parse(JSON.stringify(TRACKS[trackIdx]));
+
+function hexFromInt(n) { return '#' + (n & 0xffffff).toString(16).padStart(6, '0'); }
+function intFromHex(s) { return parseInt(s.slice(1), 16); }
+
+function rebuildScene() {
+    // Wipe everything except camera + lights
+    const keep = ['c', 'h', 'd'];
+    [...scene.meshes].forEach(m => { if (!keep.includes(m.name)) m.dispose(); });
+    [...scene.materials].forEach(m => { try { m.dispose(); } catch(e) {} });
+    buildScene();
+}
+
+function syncEditFormFromTrack() {
+    const t = TRACKS[trackIdx];
+    document.getElementById('ed-name').value = t.name;
+    const setRange = (id, v, fmt) => {
+        const el = document.getElementById(id); el.value = v;
+        document.getElementById(id + '-v').textContent = fmt ? fmt(v) : v;
+    };
+    setRange('ed-width', t.trackWidth);
+    setRange('ed-seg', t.segments);
+    setRange('ed-curve', t.maxCurve, v => Number(v).toFixed(2));
+    setRange('ed-hills', t.hills, v => Number(v).toFixed(2));
+    setRange('ed-fog', t.fogDensity, v => Number(v).toFixed(4));
+    document.getElementById('ed-sky').value = hexFromInt(t.skyColor);
+    document.getElementById('ed-ground').value = hexFromInt(t.groundColor);
+    document.getElementById('ed-fogcol').value = hexFromInt(t.fogColor);
+    updateJsonPreview();
+}
+
+function updateJsonPreview() {
+    const t = TRACKS[trackIdx];
+    const json = `    { name: '${t.name.replace(/'/g, "\\'")}', desc: '${t.desc.replace(/'/g, "\\'")}', difficulty: '${t.difficulty}', unlock: ${t.unlock},
+      skyColor: 0x${t.skyColor.toString(16).padStart(6,'0')}, groundColor: 0x${t.groundColor.toString(16).padStart(6,'0')}, fogColor: 0x${t.fogColor.toString(16).padStart(6,'0')}, fogDensity: ${t.fogDensity},
+      trackWidth: ${t.trackWidth}, segments: ${t.segments}, maxCurve: ${t.maxCurve}, hills: ${t.hills} },`;
+    document.getElementById('ed-json').textContent = json;
+}
+
+document.getElementById('toggle-edit').addEventListener('click', () => {
+    document.getElementById('edit-panel').classList.toggle('open');
+});
+
+const bindRange = (id, key, fmt, transform) => {
+    const el = document.getElementById(id);
+    el.addEventListener('input', () => {
+        let v = parseFloat(el.value);
+        if (transform) v = transform(v);
+        TRACKS[trackIdx][key] = v;
+        document.getElementById(id + '-v').textContent = fmt ? fmt(v) : v;
+        rebuildScene();
+        updateJsonPreview();
+    });
+};
+bindRange('ed-width', 'trackWidth', null, v => Math.round(v));
+bindRange('ed-seg', 'segments', null, v => Math.round(v));
+bindRange('ed-curve', 'maxCurve', v => v.toFixed(2));
+bindRange('ed-hills', 'hills', v => v.toFixed(2));
+bindRange('ed-fog', 'fogDensity', v => v.toFixed(4));
+
+const bindColor = (id, key) => {
+    document.getElementById(id).addEventListener('input', () => {
+        TRACKS[trackIdx][key] = intFromHex(document.getElementById(id).value);
+        rebuildScene();
+        updateJsonPreview();
+    });
+};
+bindColor('ed-sky', 'skyColor');
+bindColor('ed-ground', 'groundColor');
+bindColor('ed-fogcol', 'fogColor');
+
+document.getElementById('ed-name').addEventListener('input', () => {
+    TRACKS[trackIdx].name = document.getElementById('ed-name').value;
+    document.getElementById('title').textContent = TRACKS[trackIdx].name;
+    updateJsonPreview();
+});
+
+document.getElementById('ed-copy').addEventListener('click', () => {
+    const txt = document.getElementById('ed-json').textContent;
+    navigator.clipboard.writeText(txt).then(() => {
+        const b = document.getElementById('ed-copy');
+        const orig = b.textContent;
+        b.textContent = '✓ COPIED';
+        setTimeout(() => b.textContent = orig, 1400);
+    });
+});
+
+document.getElementById('ed-reset').addEventListener('click', () => {
+    Object.assign(TRACKS[trackIdx], _origTrackJSON);
+    syncEditFormFromTrack();
+    rebuildScene();
+});
+
+syncEditFormFromTrack();
+
+// ── Placement tool ────────────────────────────────────────────────
+let _activeTool = '';
+let _placedItems = [];
+
+function setTool(name) {
+    _activeTool = name;
+    document.querySelectorAll('#place-toolbar button[data-tool]').forEach(b => {
+        b.classList.toggle('active', b.dataset.tool === name);
+    });
+    if (name) { camera.detachControl(canvas); canvas.style.cursor = 'crosshair'; }
+    else { camera.attachControl(canvas, true); canvas.style.cursor = 'grab'; }
+}
+
+document.querySelectorAll('#place-toolbar button[data-tool]').forEach(b => {
+    b.addEventListener('click', () => setTool(b.dataset.tool));
+});
+document.getElementById('clear-placed').addEventListener('click', () => {
+    _placedItems = []; rebuildPlaced();
+});
+
+function _placeTree(x, z) {
+    const root = new BABYLON.TransformNode('placedTree', scene);
+    root._placedKind = 'tree';
+    const tr = BABYLON.MeshBuilder.CreateCylinder('tt', { diameterTop: 0.7, diameterBottom: 1.0, height: 6, tessellation: 8 }, scene);
+    const trMat = new BABYLON.StandardMaterial('ttm', scene);
+    trMat.diffuseColor = new BABYLON.Color3(0.32, 0.20, 0.12);
+    tr.material = trMat; tr.position.set(x, 3, z); tr.parent = root;
+    const co = BABYLON.MeshBuilder.CreateCylinder('tc', { diameterTop: 0, diameterBottom: 7, height: 13, tessellation: 12 }, scene);
+    const coMat = new BABYLON.StandardMaterial('tcm', scene);
+    coMat.diffuseColor = new BABYLON.Color3(0.10, 0.45, 0.16);
+    co.material = coMat; co.position.set(x, 12, z); co.parent = root;
+    [tr, co].forEach(m => { m._placedRoot = root; });
+    return root;
+}
+function _placeHill(x, z) {
+    const hill = BABYLON.MeshBuilder.CreateSphere('placedHill', { diameter: 60, segments: 20 }, scene);
+    const hMat = new BABYLON.StandardMaterial('phm', scene);
+    hMat.diffuseColor = new BABYLON.Color3(0.30, 0.50, 0.22);
+    hMat.specularColor = new BABYLON.Color3(0.02, 0.02, 0.02);
+    hill.material = hMat; hill.scaling.y = 0.4; hill.position.set(x, 0, z);
+    hill._placedKind = 'hill'; hill._placedRoot = hill;
+    return hill;
+}
+function _placeHut(x, z) {
+    const root = new BABYLON.TransformNode('placedHut', scene);
+    root._placedKind = 'hut';
+    const walls = BABYLON.MeshBuilder.CreateBox('hw', { width: 6, height: 4, depth: 6 }, scene);
+    const wMat = new BABYLON.StandardMaterial('hwm', scene);
+    wMat.diffuseColor = new BABYLON.Color3(0.78, 0.62, 0.40);
+    walls.material = wMat; walls.position.set(x, 2, z); walls.parent = root;
+    const roof = BABYLON.MeshBuilder.CreateCylinder('hr', { diameterTop: 0, diameterBottom: 8.5*1.414, height: 3.5, tessellation: 4 }, scene);
+    const rMat = new BABYLON.StandardMaterial('hrm', scene);
+    rMat.diffuseColor = new BABYLON.Color3(0.45, 0.20, 0.12);
+    roof.material = rMat; roof.position.set(x, 5.75, z); roof.rotation.y = Math.PI/4; roof.parent = root;
+    const door = BABYLON.MeshBuilder.CreateBox('hd', { width: 1.6, height: 2.6, depth: 0.2 }, scene);
+    const dMat = new BABYLON.StandardMaterial('hdm', scene);
+    dMat.diffuseColor = new BABYLON.Color3(0.30, 0.18, 0.08);
+    door.material = dMat; door.position.set(x, 1.3, z + 3.05); door.parent = root;
+    [walls, roof, door].forEach(m => { m._placedRoot = root; });
+    return root;
+}
+function _placeRamp(x, z) {
+    const W = 6, L = 10, H = 3; // width, length, height
+    const positions = [
+        -W/2, 0, 0,    // 0 bottom-front-left
+         W/2, 0, 0,    // 1 bottom-front-right
+        -W/2, 0, L,    // 2 bottom-back-left
+         W/2, 0, L,    // 3 bottom-back-right
+        -W/2, H, L,    // 4 top-back-left
+         W/2, H, L,    // 5 top-back-right
+    ];
+    const indices = [
+        // bottom (facing down)
+        0, 3, 2,  0, 1, 3,
+        // slope (top)
+        0, 4, 5,  0, 5, 1,
+        // back wall
+        2, 3, 5,  2, 5, 4,
+        // left side
+        0, 2, 4,
+        // right side
+        1, 5, 3,
+    ];
+    const mesh = new BABYLON.Mesh('placedRamp', scene);
+    const vd = new BABYLON.VertexData();
+    vd.positions = positions;
+    vd.indices = indices;
+    const normals = [];
+    BABYLON.VertexData.ComputeNormals(positions, indices, normals);
+    vd.normals = normals;
+    vd.applyToMesh(mesh);
+    mesh.position.set(x, 0, z);
+    const mat = new BABYLON.StandardMaterial('placedRampMat', scene);
+    mat.diffuseColor = new BABYLON.Color3(1.0, 0.45, 0.10);
+    mat.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+    mat.emissiveColor = new BABYLON.Color3(0.12, 0.05, 0.01);
+    mesh.material = mat;
+    // Black-and-yellow striped edges baked into the slope-front edge for that
+    // arcade-ramp feel. Two thin overlay strips along the front lip.
+    const stripe = BABYLON.MeshBuilder.CreatePlane('rampStripe', {
+        width: W * 0.96, height: 0.4, sideOrientation: BABYLON.Mesh.DOUBLESIDE
+    }, scene);
+    stripe.position.set(x, 0.06, z + 0.05);
+    stripe.rotation.x = -Math.PI / 2;
+    const sm = new BABYLON.StandardMaterial('rampStripeMat', scene);
+    sm.diffuseColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+    sm.emissiveColor = new BABYLON.Color3(0.95, 0.85, 0.10);
+    stripe.material = sm;
+    stripe._placedRoot = mesh;
+    mesh._placedKind = 'ramp'; mesh._placedRoot = mesh;
+    return mesh;
+}
+
+function _placeRock(x, z) {
+    const r = BABYLON.MeshBuilder.CreateSphere('placedRock', { diameter: 5, segments: 5 }, scene);
+    const rMat = new BABYLON.StandardMaterial('prm', scene);
+    rMat.diffuseColor = new BABYLON.Color3(0.42, 0.40, 0.40);
+    rMat.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+    r.material = rMat; r.scaling.y = 0.6; r.position.set(x, 1.4, z);
+    r._placedKind = 'rock'; r._placedRoot = r;
+    return r;
+}
+
+function _placePalm(x, z) {
+    const root = new BABYLON.TransformNode('placedPalm', scene);
+    root._placedKind = 'palm';
+    const tr = BABYLON.MeshBuilder.CreateCylinder('pat', { diameterTop: 0.4, diameterBottom: 0.7, height: 9, tessellation: 8 }, scene);
+    const tm = new BABYLON.StandardMaterial('patm', scene);
+    tm.diffuseColor = new BABYLON.Color3(0.32, 0.20, 0.12);
+    tr.material = tm; tr.position.set(x, 4.5, z); tr.parent = root;
+    const lm = new BABYLON.StandardMaterial('palm', scene);
+    lm.diffuseColor = new BABYLON.Color3(0.18, 0.55, 0.18);
+    lm.backFaceCulling = false;
+    for (let i = 0; i < 6; i++) {
+        const lf = BABYLON.MeshBuilder.CreatePlane('pal' + i, { width: 7, height: 1.6, sideOrientation: BABYLON.Mesh.DOUBLESIDE }, scene);
+        lf.material = lm; lf.position.set(x, 9, z);
+        lf.rotation.y = (i / 6) * Math.PI * 2; lf.rotation.z = -0.4;
+        lf.parent = root; lf._placedRoot = root;
+    }
+    tr._placedRoot = root;
+    return root;
+}
+
+function _placeAutumn(x, z) {
+    // Same as tree but orange foliage
+    const root = new BABYLON.TransformNode('placedAutumn', scene);
+    root._placedKind = 'autumn';
+    const tr = BABYLON.MeshBuilder.CreateCylinder('att', { diameterTop: 0.7, diameterBottom: 1.0, height: 6, tessellation: 8 }, scene);
+    const tm = new BABYLON.StandardMaterial('attm', scene);
+    tm.diffuseColor = new BABYLON.Color3(0.32, 0.20, 0.12);
+    tr.material = tm; tr.position.set(x, 3, z); tr.parent = root;
+    const co = BABYLON.MeshBuilder.CreateCylinder('atc', { diameterTop: 0, diameterBottom: 7, height: 13, tessellation: 12 }, scene);
+    const cm = new BABYLON.StandardMaterial('atcm', scene);
+    cm.diffuseColor = new BABYLON.Color3(0.85, 0.42, 0.10);
+    co.material = cm; co.position.set(x, 12, z); co.parent = root;
+    [tr, co].forEach(m => { m._placedRoot = root; });
+    return root;
+}
+
+function _placeMountain(x, z) {
+    const m = BABYLON.MeshBuilder.CreateCylinder('placedMtn', {
+        diameterTop: 4, diameterBottom: 60, height: 50, tessellation: 18
+    }, scene);
+    const mat = new BABYLON.StandardMaterial('pmtnm', scene);
+    mat.diffuseColor = new BABYLON.Color3(0.96, 0.97, 1.0);
+    mat.emissiveColor = new BABYLON.Color3(0.05, 0.06, 0.08);
+    mat.specularColor = new BABYLON.Color3(0.15, 0.15, 0.2);
+    m.material = mat;
+    m.position.set(x, 25, z);
+    m._placedKind = 'mountain'; m._placedRoot = m;
+    return m;
+}
+
+function _placePyramid(x, z) {
+    const py = BABYLON.MeshBuilder.CreateCylinder('placedPyr', {
+        diameterTop: 0, diameterBottom: 50 * 1.414, height: 65, tessellation: 4
+    }, scene);
+    const pm = new BABYLON.StandardMaterial('ppm', scene);
+    pm.diffuseColor = new BABYLON.Color3(0.86, 0.72, 0.42);
+    pm.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+    py.material = pm;
+    py.position.set(x, 32.5, z);
+    py.rotation.y = Math.PI / 4;
+    py._placedKind = 'pyramid'; py._placedRoot = py;
+    return py;
+}
+
+function _placeSphinx(x, z) {
+    const root = new BABYLON.TransformNode('placedSphinx', scene);
+    root._placedKind = 'sphinx';
+    root.position.set(x, 0, z);
+    const sm = new BABYLON.StandardMaterial('psm', scene);
+    sm.diffuseColor = new BABYLON.Color3(0.78, 0.62, 0.36);
+    sm.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+    const stoneM = new BABYLON.StandardMaterial('psstone', scene);
+    stoneM.diffuseColor = new BABYLON.Color3(0.55, 0.48, 0.36);
+    const body = BABYLON.MeshBuilder.CreateBox('sxb', { width: 6, height: 5, depth: 18 }, scene);
+    body.material = sm; body.position.y = 2.5; body.parent = root;
+    const legs = BABYLON.MeshBuilder.CreateBox('sxl', { width: 6, height: 3, depth: 6 }, scene);
+    legs.material = sm; legs.position.set(0, 1.5, 9); legs.parent = root;
+    const head = BABYLON.MeshBuilder.CreateBox('sxh', { width: 3.6, height: 4, depth: 3.6 }, scene);
+    head.material = sm; head.position.set(0, 7, 7); head.parent = root;
+    for (const sd of [-1, 1]) {
+        const dr = BABYLON.MeshBuilder.CreateBox('sxd', { width: 1.5, height: 4, depth: 4 }, scene);
+        dr.material = sm; dr.position.set(sd * 2.0, 6.5, 7); dr.parent = root;
+    }
+    const ped = BABYLON.MeshBuilder.CreateBox('sxp', { width: 9, height: 1, depth: 24 }, scene);
+    ped.material = stoneM; ped.position.set(0, 0.5, 4); ped.parent = root;
+    [body, legs, head, ped].forEach(m => { m._placedRoot = root; });
+    return root;
+}
+
+function _placeCactus(x, z) {
+    const root = new BABYLON.TransformNode('placedCactus', scene);
+    root._placedKind = 'cactus';
+    const cm = new BABYLON.StandardMaterial('pcm', scene);
+    cm.diffuseColor = new BABYLON.Color3(0.18, 0.45, 0.18);
+    cm.specularColor = new BABYLON.Color3(0.05, 0.05, 0.05);
+    const body = BABYLON.MeshBuilder.CreateCylinder('cb', { diameter: 1.6, height: 6, tessellation: 10 }, scene);
+    body.material = cm; body.position.set(x, 3, z); body.parent = root;
+    for (const sd of [-1, 1]) {
+        const arm = BABYLON.MeshBuilder.CreateCylinder('ca', { diameter: 1.1, height: 3, tessellation: 8 }, scene);
+        arm.material = cm; arm.position.set(x + sd * 1.2, 4.5, z); arm.rotation.z = sd * 0.5; arm.parent = root;
+        const au = BABYLON.MeshBuilder.CreateCylinder('cu', { diameter: 1.0, height: 2, tessellation: 8 }, scene);
+        au.material = cm; au.position.set(x + sd * 1.85, 5.6, z); au.parent = root;
+    }
+    [...root.getChildMeshes()].forEach(m => { m._placedRoot = root; });
+    return root;
+}
+
+function _placeBuilding(x, z) {
+    const root = new BABYLON.TransformNode('placedBldg', scene);
+    root._placedKind = 'building';
+    const w = 12, d = 12, h = 60;
+    const b = BABYLON.MeshBuilder.CreateBox('bbb', { width: w, height: h, depth: d }, scene);
+    const bm = new BABYLON.StandardMaterial('pbm', scene);
+    bm.diffuseColor = new BABYLON.Color3(0.22, 0.24, 0.30);
+    bm.emissiveColor = new BABYLON.Color3(0.04, 0.05, 0.08);
+    b.material = bm; b.position.set(x, h / 2, z); b.parent = root;
+    const top = BABYLON.MeshBuilder.CreateBox('bbt', { width: w * 1.02, height: 1.5, depth: d * 1.02 }, scene);
+    const tm = new BABYLON.StandardMaterial('pbtm', scene);
+    tm.diffuseColor = new BABYLON.Color3(0, 0, 0);
+    tm.emissiveColor = new BABYLON.Color3(1.0, 0.7, 0.2);
+    tm.disableLighting = true;
+    top.material = tm; top.position.set(x, h - 1.5, z); top.parent = root;
+    [b, top].forEach(m => { m._placedRoot = root; });
+    return root;
+}
+
+function _placeWater(x, z) {
+    const p = BABYLON.MeshBuilder.CreateDisc('placedWater', {
+        radius: 30, tessellation: 32, sideOrientation: BABYLON.Mesh.DOUBLESIDE
+    }, scene);
+    p.rotation.x = Math.PI / 2;
+    p.position.set(x, 0.15, z);
+    const pm = new BABYLON.StandardMaterial('pwm', scene);
+    pm.disableLighting = true;
+    pm.diffuseColor = new BABYLON.Color3(0, 0, 0);
+    pm.emissiveColor = new BABYLON.Color3(0.10, 0.40, 0.72);
+    pm.backFaceCulling = false;
+    p.material = pm;
+    p._placedKind = 'water'; p._placedRoot = p;
+    return p;
+}
+
+function _placeLava(x, z) {
+    const p = BABYLON.MeshBuilder.CreateDisc('placedLava', {
+        radius: 15, tessellation: 28, sideOrientation: BABYLON.Mesh.DOUBLESIDE
+    }, scene);
+    p.rotation.x = Math.PI / 2;
+    p.position.set(x, 0.15, z);
+    const pm = new BABYLON.StandardMaterial('plm', scene);
+    pm.disableLighting = true;
+    pm.diffuseColor = new BABYLON.Color3(0, 0, 0);
+    pm.emissiveColor = new BABYLON.Color3(1.0, 0.32, 0.05);
+    pm.backFaceCulling = false;
+    p.material = pm;
+    p._placedKind = 'lava'; p._placedRoot = p;
+    return p;
+}
+
+const _placeFactories = {
+    tree: _placeTree, hill: _placeHill, hut: _placeHut, rock: _placeRock,
+    palm: _placePalm, autumn: _placeAutumn, mountain: _placeMountain,
+    pyramid: _placePyramid, sphinx: _placeSphinx, cactus: _placeCactus,
+    building: _placeBuilding, water: _placeWater, lava: _placeLava,
+    ramp: _placeRamp,
+};
+
+function rebuildPlaced() {
+    [...scene.meshes].forEach(m => { if (m._placedRoot || m._placedKind) m.dispose(); });
+    [...scene.transformNodes].forEach(tn => { if (tn._placedKind) tn.dispose(); });
+    _placedItems.forEach(item => {
+        const fn = _placeFactories[item.kind];
+        if (fn) fn(item.x, item.z);
+    });
+}
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('pointerdown', e => {
+    if (e.button === 2) {
+        const pick = scene.pick(scene.pointerX, scene.pointerY);
+        if (pick && pick.hit && pick.pickedMesh) {
+            const root = pick.pickedMesh._placedRoot;
+            if (root) {
+                const px = root.position.x, pz = root.position.z;
+                let best = -1, bestD = Infinity;
+                _placedItems.forEach((it, i) => {
+                    const d = (it.x - px) ** 2 + (it.z - pz) ** 2;
+                    if (d < bestD) { bestD = d; best = i; }
+                });
+                if (best >= 0) { _placedItems.splice(best, 1); rebuildPlaced(); }
+            }
+        }
+        e.preventDefault(); return;
+    }
+    if (_activeTool && e.button === 0) {
+        const pick = scene.pick(scene.pointerX, scene.pointerY, m => m && !m._placedRoot && !m._placedKind);
+        if (pick && pick.hit && pick.pickedPoint) {
+            const p = pick.pickedPoint;
+            _placedItems.push({ kind: _activeTool, x: p.x, z: p.z });
+            const fn = _placeFactories[_activeTool];
+            if (fn) fn(p.x, p.z);
+        }
+    }
+});
+
+// Re-apply placed items after a track rebuild
+const _origRebuildScene = rebuildScene;
+rebuildScene = function() { _origRebuildScene(); rebuildPlaced(); };
+
+engine.runRenderLoop(() => {
+    if (_autoSpin && (performance.now() - _idle) > 1500) camera.alpha -= 0.0028;
+    scene.render();
+});
+window.addEventListener('resize', () => engine.resize());
+</script>
+</body>
+</html>

@@ -46,8 +46,8 @@ let lastFrameTime = 0;
 function initScene() {
     const track = TRACKS[GameState.selectedTrack];
     const isNight = track.skyColor === 0x0a0a2e || track.skyColor === 0x050515 || track.skyColor === 0x331111;
-    const isDesert = track.name === 'Desert Storm' || track.name === 'Volcano Ring';
-    const isSnow = track.name === 'Snow Peak' || track.name === 'Thunder Mountain';
+    const isDesert = track.name === 'Austin COTA';
+    const isSnow = track.name === 'Fuji Speedway';
 
     const canvas = document.getElementById('renderCanvas');
     canvas.style.display = 'block';

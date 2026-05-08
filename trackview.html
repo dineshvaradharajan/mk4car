@@ -274,15 +274,16 @@ function mkMat(name, diff, emis, dl) {
 }
 
 function addBiomeScenery(t, path, hw) {
+    return; // scenery disabled
     const name = t.name;
-    const isCity = name === 'Night City' || name === 'Midnight Highway';
-    const isDesert = name === 'Desert Storm';
-    const isVolcano = name === 'Volcano Ring';
-    const isSnow = name === 'Snow Peak' || name === 'Thunder Mountain';
-    const isTropical = name === 'Tropical Island';
-    const isCoastal = name === 'Coastal Drive';
-    const isForest = name === 'Autumn Forest';
-    const isSunny = name === 'Sunny Valley';
+    const isCity = name === 'Baku Streets' || name === 'Jeddah Corniche' || name === 'Las Vegas Strip' || name === 'Shanghai';
+    const isDesert = name === 'Austin COTA';
+    const isVolcano = false;
+    const isSnow = name === 'Fuji Speedway';
+    const isTropical = name === 'Miami Gardens' || name === 'Sepang';
+    const isCoastal = name === 'Zandvoort';
+    const isForest = name === 'Imola' || name === 'Mugello' || name === 'Hockenheim';
+    const isSunny = name === 'Interlagos' || name === 'Mexico Hermanos' || name === 'Red Bull Ring';
 
     let seed = 1234;
     const rand = () => { seed = (seed*9301+49297)%233280; return seed/233280; };

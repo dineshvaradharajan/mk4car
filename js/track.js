@@ -261,19 +261,11 @@ function buildTrackMesh(trackDef) {
 
     const roadMat = new BABYLON.StandardMaterial(tuid("roadMat"), scene);
     roadMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
-    roadMat.specularColor = new BABYLON.Color3(0.35, 0.35, 0.38);
-    roadMat.specularPower = 48;
+    roadMat.specularColor = new BABYLON.Color3(0.12, 0.12, 0.14);
+    roadMat.specularPower = 96;
     roadMat.backFaceCulling = false;
-    // Wet/polished road reflections — Asphalt Legends style
-    if (scene.environmentTexture) {
-        roadMat.reflectionTexture = scene.environmentTexture;
-        roadMat.reflectionTexture.level = 0.12;
-    }
-    roadMat.reflectionFresnelParameters = new BABYLON.FresnelParameters();
-    roadMat.reflectionFresnelParameters.leftColor = new BABYLON.Color3(0.2, 0.2, 0.25);
-    roadMat.reflectionFresnelParameters.rightColor = new BABYLON.Color3(0.02, 0.02, 0.02);
-    roadMat.reflectionFresnelParameters.power = 2.5;
-    roadMat.reflectionFresnelParameters.bias = 0.08;
+    // Mild matte sheen — the previous setup mirrored the bright HDR sky down
+    // the centre of the asphalt and created a "white tunnel" artifact.
     roadMesh.material = roadMat;
     roadMesh.receiveShadows = true;
     roadMesh.hasVertexAlpha = false;
@@ -781,13 +773,14 @@ function buildStartGantry(trackDef, startP, startDir, startRight) {
 }
 
 function addScenery(trackDef) {
+    return; // scenery disabled — clean track view only
     const name = trackDef.name;
-    const isCity = name === 'Night City' || name === 'Midnight Highway';
-    const isDesert = name === 'Desert Storm' || name === 'Volcano Ring';
-    const isSnow = name === 'Snow Peak' || name === 'Thunder Mountain';
-    const isTropical = name === 'Tropical Island';
-    const isCoastal = name === 'Coastal Drive';
-    const isSunny = name === 'Sunny Valley';
+    const isCity = name === 'Baku Streets' || name === 'Jeddah Corniche' || name === 'Las Vegas Strip' || name === 'Shanghai';
+    const isDesert = name === 'Austin COTA';
+    const isSnow = name === 'Fuji Speedway';
+    const isTropical = name === 'Miami Gardens' || name === 'Sepang';
+    const isCoastal = name === 'Zandvoort';
+    const isSunny = name === 'Interlagos' || name === 'Mexico Hermanos' || name === 'Red Bull Ring';
     const isNight = trackDef.skyColor === 0x0a0a2e || trackDef.skyColor === 0x050515 || trackDef.skyColor === 0x331111;
     const up = new BABYLON.Vector3(0, 1, 0);
 
@@ -1092,11 +1085,7 @@ function addScenery(trackDef) {
         addSnowbanks(trackDef);
         createSnowfall();
     }
-    if (name === 'Volcano Ring') {
-        createEmberParticles();
-        addVolcanoCrater(trackDef);
-    }
-    if (name === 'Snow Peak') {
+    if (name === 'Fuji Speedway') {
         addCentralMountain(trackDef);
     }
 }
@@ -1472,7 +1461,7 @@ function addTrackEdgeVegetation(trackDef, isSnow) {
     const n = trackPoints.length;
     const hw = trackDef.trackWidth / 2;
     const up = new BABYLON.Vector3(0, 1, 0);
-    const isSunnyV = trackDef.name === 'Sunny Valley';
+    const isSunnyV = trackDef.name === 'Interlagos';
 
     // Merge tufts into batches
     const grassColor = isSnow ? new BABYLON.Color3(0.55, 0.6, 0.5)
@@ -2107,7 +2096,7 @@ function addCityScenery(trackDef, isNight) {
 
 // Desert scenery: cacti, sand dunes with curved shapes, rocks
 function addDesertScenery(trackDef) {
-    const isVolcano = trackDef.name === 'Volcano Ring';
+    const isVolcano = false;
     _trackSeed = 6666;
 
     const rockMat = new BABYLON.StandardMaterial(tuid("desertRock"), scene);

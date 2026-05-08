@@ -180,10 +180,61 @@ function initCarPreview() {
         setTimeout(() => { if (_previewEngine) _previewEngine.resize(); }, 120);
     });
     updateCarPreview();
-    // Background thumbnail preloader temporarily disabled — was racing with
-    // the main preview's GLB load through the tunnel and leaving the visible
-    // preview empty.
-    // setTimeout(() => preloadAllCarThumbnails(), 800);
+    // Cycler disabled: it raced with the main preview and could leave it
+    // empty. Cards show 2D silhouettes; the main preview shows the 3D car.
+    // Each card's thumbnail gets captured the first time the user clicks it
+    // (via the auto-capture in _previewFitToTurntable).
+}
+
+let _thumbCycleRunning = false;
+let _thumbCycleExpect = -1; // index we just set; differs from selectedCar if user clicked
+async function _cycleAllCarThumbnails() {
+    if (_thumbCycleRunning) return;
+    if (typeof CARS === 'undefined' || !_previewScene) return;
+    window.__carThumbnails = window.__carThumbnails || {};
+
+    const userOriginal = GameState.selectedCar;
+    // Skip the currently-selected car: the visible preview is already loading
+    // it and will auto-capture its thumbnail. If we try to "load" it here,
+    // updateCarPreview's dedup short-circuits and the cycler waits 4s for a
+    // capture that the original load is still working on.
+    const todo = CARS
+        .map((c, i) => ({ car: c, i }))
+        .filter(({ car, i }) =>
+            GameState.xp >= car.unlock
+            && !window.__carThumbnails[car.style]
+            && i !== userOriginal
+        );
+
+    _thumbCycleRunning = true;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    for (const { car, i } of todo) {
+        if (window.__carThumbnails[car.style]) continue;
+        if (_thumbCycleExpect !== -1 && GameState.selectedCar !== _thumbCycleExpect) break;
+        GameState.selectedCar = i;
+        _thumbCycleExpect = i;
+        updateCarPreview();
+        // Bigger GLBs (lamborghini-diablo-sv is ~10MB) need more headroom.
+        const deadline = Date.now() + 8000;
+        while (Date.now() < deadline && !window.__carThumbnails[car.style]) {
+            await sleep(120);
+        }
+    }
+
+    // Restore selection only if user didn't pick something else mid-cycle.
+    const userPicked = _thumbCycleExpect !== -1 && GameState.selectedCar !== _thumbCycleExpect;
+    if (!userPicked) {
+        GameState.selectedCar = userOriginal;
+    }
+    // Force the visible preview to reload the now-selected car. The cycler's
+    // mid-flight loads may have left _previewLoadedStyle pointing at a car
+    // that never actually finished rendering, so clear it first.
+    _previewLoadedStyle = null;
+    updateCarPreview();
+    if (typeof buildCarSelect === 'function') buildCarSelect();
+    _thumbCycleExpect = -1;
+    _thumbCycleRunning = false;
 }
 
 // Generates 3D thumbnails for every CAR style in an offscreen canvas, so
@@ -397,6 +448,8 @@ function _loadPreviewCar(style, color) {
         setTimeout(() => _previewFitToTurntable(rootNode, fileName), 60);
     }, null, (_scene, message, exception) => {
         console.warn('[preview] GLB load failed for ' + style + ':', message, exception);
+        // Clear the dedup flag so the user can click this car again to retry.
+        if (_previewLoadedStyle === style) _previewLoadedStyle = null;
     });
 
     return rootNode;
@@ -497,7 +550,9 @@ function _previewFitToTurntable(root, label) {
     const b1 = worldBounds(meshes);
     if (!b1) { console.warn('[preview] no valid bounds for', label); return; }
 
-    const s1 = Math.max(b1.max.x - b1.min.x, b1.max.y - b1.min.y, b1.max.z - b1.min.z);
+    // Normalize on length (longest horizontal axis) so every car fills the
+    // turntable to the same wheelbase, ignoring height differences.
+    const s1 = Math.max(b1.max.x - b1.min.x, b1.max.z - b1.min.z);
     if (s1 < 0.0001) return;
 
     const target = 6.0;
@@ -829,15 +884,16 @@ function updateTrackPreview() {
 // ── Biome-specific scenery for the 3D track preview. Lightweight stylized
 // shapes — placed randomly outside the track but inside the ground disc.
 function _trackPrevAddScenery(t, path, hw) {
+    return; // scenery disabled
     const name = t.name;
-    const isCity = name === 'Night City' || name === 'Midnight Highway';
-    const isDesert = name === 'Desert Storm';
-    const isVolcano = name === 'Volcano Ring';
-    const isSnow = name === 'Snow Peak' || name === 'Thunder Mountain';
-    const isTropical = name === 'Tropical Island';
-    const isCoastal = name === 'Coastal Drive';
-    const isForest = name === 'Autumn Forest';
-    const isSunny = name === 'Sunny Valley';
+    const isCity = name === 'Baku Streets' || name === 'Jeddah Corniche' || name === 'Las Vegas Strip' || name === 'Shanghai';
+    const isDesert = name === 'Austin COTA';
+    const isVolcano = false;
+    const isSnow = name === 'Fuji Speedway';
+    const isTropical = name === 'Miami Gardens' || name === 'Sepang';
+    const isCoastal = name === 'Zandvoort';
+    const isForest = name === 'Imola' || name === 'Mugello' || name === 'Hockenheim';
+    const isSunny = name === 'Interlagos' || name === 'Mexico Hermanos' || name === 'Red Bull Ring';
 
     // Quick deterministic RNG so previews are consistent
     let seed = 1234;

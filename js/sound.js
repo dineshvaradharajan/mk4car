@@ -1,6 +1,26 @@
 // ============================================================
 //  SOUND ENGINE (Web Audio API) - no 3D engine dependency
 // ============================================================
+// Map of car style → real engine recording. Drop royalty-free MP3/OGG/WAV
+// files into the sounds/ folder with these filenames and the engine will
+// switch from synth to real recordings automatically. Missing files just
+// fall back to the procedural synth — nothing breaks.
+const CAR_ENGINE_SOUNDS = {
+    'ferrari':    'sounds/engine-ferrari-v8.mp3',
+    'laferrari':  'sounds/engine-ferrari-v12.mp3',
+    'lambo':      'sounds/engine-lambo-v12.mp3',
+    'hatchback':  'sounds/engine-i4.mp3',
+    'muscle':     'sounds/engine-american-v8.mp3',
+    'f1':         'sounds/engine-f1-v6t.mp3',
+    'ferrarif1':  'sounds/engine-f1-v8.mp3',
+    'koenigsegg': 'sounds/engine-koenigsegg-v8t.mp3',
+    'jesko':      'sounds/engine-jesko-v8t.mp3',
+    'gt':         'sounds/engine-supercar-v10.mp3',
+    'supra4':     'sounds/engine-supra-i6t.mp3',
+    'supra5':     'sounds/engine-supra-i6t.mp3',
+    'bugatti':    'sounds/engine-bugatti-w16.mp3',
+};
+
 const SoundEngine = {
     ctx: null,
     engineOsc: null,
@@ -8,6 +28,10 @@ const SoundEngine = {
     initialized: false,
     isF1: false,
     isBugatti: false,
+    // Real-engine sample layer (added on top of the synth when available)
+    _realSampleSrc: null,
+    _realSampleGain: null,
+    _realSampleBuffer: null,
 
     init() {
         if (this.initialized) return;
@@ -109,7 +133,45 @@ const SoundEngine = {
             this._noiseSrc = noiseSrc;
             this._master = masterGain;
             this.initialized = true;
+
+            // Kick off real-engine sample load (fire-and-forget; fallback to
+            // synth-only if the file is missing or fails to decode).
+            this._loadRealEngineSample();
         } catch(e) { console.log('Audio not available'); }
+    },
+
+    _loadRealEngineSample() {
+        const style = CARS[GameState.selectedCar].style;
+        const url = CAR_ENGINE_SOUNDS[style];
+        if (!url || !this.ctx) return;
+        const ctx = this.ctx;
+        // Stop any previous real-sample source
+        try { if (this._realSampleSrc) this._realSampleSrc.stop(); } catch(e) {}
+        this._realSampleSrc = null;
+        this._realSampleGain = null;
+        this._realSampleBuffer = null;
+
+        fetch(url, { cache: 'force-cache' })
+            .then(r => { if (!r.ok) throw new Error('no engine sample'); return r.arrayBuffer(); })
+            .then(buf => ctx.decodeAudioData(buf))
+            .then(audioBuf => {
+                if (!this.initialized) return;
+                this._realSampleBuffer = audioBuf;
+                const src = ctx.createBufferSource();
+                src.buffer = audioBuf; src.loop = true;
+                const g = ctx.createGain(); g.gain.value = 0;
+                src.connect(g); g.connect(this._master);
+                src.start();
+                this._realSampleSrc = src;
+                this._realSampleGain = g;
+                // Once a real sample is playing, duck the synth-tone harmonics
+                // so the recording dominates the timbre. Keep the cylinder
+                // pulse + low rumble for impact.
+                if (this.engineGain)  this.engineGain.gain.value = 0;
+                if (this.engineGain2) this.engineGain2.gain.value = 0;
+                if (this.engineGain3) this.engineGain3.gain.value = 0;
+            })
+            .catch(() => { /* file missing → synth-only fallback, no error */ });
     },
 
     updateEngine(speed, maxSpeed) {
@@ -125,14 +187,16 @@ const SoundEngine = {
         // Cylinder pulse rate
         this._pulseLFO.frequency.linearRampToValueAtTime(firingHz, t);
 
-        // Low-rumble filter sweeps slightly with RPM (intake resonance)
+        // Low-rumble filter sweeps slightly with RPM (intake resonance) —
+        // dialled WAY down: this layer was the primary "wind" noise complaint.
         this._lowF.frequency.linearRampToValueAtTime(180 + rev * 480, t);
-        const lowVol = (0.06 + rev * p.growl) * (0.35 + rev * 0.65);
+        const lowVol = (0.015 + rev * p.growl * 0.20) * (0.35 + rev * 0.65);
         this._lowG.gain.linearRampToValueAtTime(lowVol, t);
 
-        // Intake hiss opens up at high RPM
-        this._hissF.frequency.linearRampToValueAtTime(1200 + rev * 3200, t);
-        this._hissG.gain.linearRampToValueAtTime(rev * p.hiss, t);
+        // Intake hiss — silenced. This was the high-frequency "wind" sound
+        // that became irritating at high RPM. Real engine recordings will
+        // bring proper intake/exhaust character; the synth doesn't need it.
+        this._hissG.gain.linearRampToValueAtTime(0, t);
 
         // Harmonic tone stack: fundamental at firing/2, 1×, 2×
         // (real engines have strong even harmonics from cylinder pairs firing)
@@ -142,10 +206,23 @@ const SoundEngine = {
         this.engineOsc3.frequency.linearRampToValueAtTime(tone1Hz * 3, t);
         // Tone gets brighter with RPM
         this.engineFilter.frequency.linearRampToValueAtTime(400 + rev * 2400, t);
-        const toneBase = 0.025 + rev * 0.06;
-        this.engineGain.gain.linearRampToValueAtTime(toneBase * 0.9, t);
-        this.engineGain2.gain.linearRampToValueAtTime(toneBase * 0.55, t);
-        this.engineGain3.gain.linearRampToValueAtTime(toneBase * 0.18 * (0.4 + rev * 0.6), t);
+        // Tones get a moderate bump now that the noise layers are silenced —
+        // gives the engine clean presence without the harsh hiss.
+        const toneBase = 0.035 + rev * 0.085;
+        // Synth tones are silenced when a real sample is playing
+        const synthMul = this._realSampleSrc ? 0 : 1;
+        this.engineGain.gain.linearRampToValueAtTime(toneBase * 0.9 * synthMul, t);
+        this.engineGain2.gain.linearRampToValueAtTime(toneBase * 0.55 * synthMul, t);
+        this.engineGain3.gain.linearRampToValueAtTime(toneBase * 0.18 * (0.4 + rev * 0.6) * synthMul, t);
+
+        // Real-engine sample: pitch + volume scale with RPM. The recording
+        // is typically captured at idle, so we shift up to ~2.5x at redline.
+        if (this._realSampleSrc && this._realSampleGain) {
+            const targetRate = 0.7 + rev * 1.8; // 0.7x at idle → 2.5x at redline
+            try { this._realSampleSrc.playbackRate.linearRampToValueAtTime(targetRate, t); } catch(e) {}
+            const targetGain = 0.35 + rev * 0.55;
+            this._realSampleGain.gain.linearRampToValueAtTime(targetGain, t);
+        }
     },
 
     playDrift() {
@@ -238,6 +315,8 @@ const SoundEngine = {
                     if (this.engineOsc3) this.engineOsc3.stop();
                     if (this._pulseLFO) this._pulseLFO.stop();
                     if (this._noiseSrc) this._noiseSrc.stop();
+                    if (this._realSampleSrc) this._realSampleSrc.stop();
+                    this._realSampleSrc = null; this._realSampleGain = null;
                     if (this.ctx && this.ctx.state !== 'closed') this.ctx.close();
                 } catch(e) {}
             }, 200);
@@ -258,8 +337,8 @@ const MusicEngine = {
     nextNoteTime: 0,
     step: 0,
     started: false,
-    bpm: 140,
-    targetVolume: 0.18,
+    bpm: 124, // classic pop tempo
+    targetVolume: 0.28,
 
     start() {
         if (this.started) {
@@ -492,5 +571,81 @@ const MusicEngine = {
         g.connect(delay); delay.connect(dlyG); dlyG.connect(delay); dlyG.connect(this.master);
         o.start(when); det.start(when);
         o.stop(when + 0.25); det.stop(when + 0.25);
+    },
+};
+
+// ============================================================
+//  MUSIC PLAYER — plays real MP3 pop tracks during races.
+//  Drop .mp3/.ogg files into /music/ with these filenames (any subset works);
+//  the player will cycle through whatever it finds.
+// ============================================================
+const RACE_PLAYLIST = [
+    'music/track1.mp3',
+    'music/track2.mp3',
+    'music/track3.mp3',
+    'music/track4.mp3',
+    'music/track5.mp3',
+    'music/track6.mp3',
+    'music/track7.mp3',
+    'music/track8.mp3',
+];
+
+const MusicPlayer = {
+    audio: null,
+    available: [],
+    idx: 0,
+    started: false,
+
+    async _scan() {
+        // Probe each playlist URL with HEAD to see which files actually exist.
+        const found = [];
+        await Promise.all(RACE_PLAYLIST.map(async url => {
+            try {
+                const r = await fetch(url, { method: 'HEAD' });
+                if (r.ok) found.push(url);
+            } catch(e) {}
+        }));
+        // Preserve original order for found tracks
+        this.available = RACE_PLAYLIST.filter(u => found.includes(u));
+    },
+
+    async start() {
+        if (this.started) {
+            try { if (this.audio && this.audio.paused) await this.audio.play(); } catch(e) {}
+            return;
+        }
+        await this._scan();
+        if (!this.available.length) { /* no MP3s installed yet */ return; }
+        this.started = true;
+        this.idx = Math.floor(Math.random() * this.available.length);
+        this._playCurrent();
+    },
+
+    _playCurrent() {
+        if (!this.available.length) return;
+        if (this.audio) { try { this.audio.pause(); } catch(e) {} this.audio = null; }
+        const a = new Audio(this.available[this.idx]);
+        a.volume = 0.7;
+        a.addEventListener('ended', () => {
+            this.idx = (this.idx + 1) % this.available.length;
+            this._playCurrent();
+        });
+        a.play().catch(() => { /* autoplay blocked — user gesture will start it */ });
+        this.audio = a;
+    },
+
+    stop() {
+        if (this.audio) { try { this.audio.pause(); } catch(e) {} this.audio = null; }
+        this.started = false;
+    },
+
+    setVolume(v) {
+        if (this.audio) this.audio.volume = Math.max(0, Math.min(1, v));
+    },
+
+    toggleMuted() {
+        if (!this.audio) return false;
+        this.audio.muted = !this.audio.muted;
+        return this.audio.muted;
     },
 };

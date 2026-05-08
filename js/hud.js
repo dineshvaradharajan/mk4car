@@ -29,9 +29,16 @@ function getPositions() {
 function updateHUD() {
     const displaySpeed = Math.round(Math.sqrt(carVelX * carVelX + carVelZ * carVelZ) * 3.6);
     _getHudEl('hud-speed').textContent = displaySpeed;
-    _getHudEl('hud-lap').textContent = Math.min(playerLap, GameState.laps);
 
-    // Big nitro bar at top-center (Asphalt-style)
+    // Distance % — based on player progress along the track + completed laps
+    const totalLaps = Math.max(1, GameState.laps || 1);
+    const progress = Math.min(1, ((playerLap - 1) + (typeof playerT !== 'undefined' ? playerT : 0)) / totalLaps);
+    const distEl = _getHudEl('hud-dist');
+    if (distEl) distEl.textContent = Math.round(progress * 100);
+    const oppEl = _getHudEl('hud-total-opps');
+    if (oppEl) oppEl.textContent = (1 + (GameState.opponents || 0));
+
+    // Big nitro bar — yellow fill, cyan PERFECT zone fixed at 38–51%
     const bigFill = document.getElementById('big-nitro-fill');
     const bigPct = document.getElementById('nitro-pct');
     const bigBox = document.getElementById('big-nitro');
@@ -39,18 +46,13 @@ function updateHUD() {
     if (bigFill) {
         bigFill.style.width = nitro + '%';
         if (bigPct) bigPct.textContent = Math.round(nitro) + '%';
-        if (nitro > 90) {
-            bigFill.style.background = 'linear-gradient(90deg,#00ddff 0%,#ffffff 100%)';
-            bigFill.style.boxShadow = '0 0 30px rgba(0,221,255,.95)';
-        } else if (nitro > 50) {
-            bigFill.style.background = 'linear-gradient(90deg,#ff6b35 0%,#f7c948 50%,#00ddff 100%)';
-            bigFill.style.boxShadow = '0 0 20px rgba(255,107,53,.7)';
-        } else if (nitro > 15) {
-            bigFill.style.background = 'linear-gradient(90deg,#ff6b35 0%,#f7c948 100%)';
-            bigFill.style.boxShadow = '0 0 12px rgba(255,107,53,.5)';
+        // Cyan-shift the fill while a Perfect Nitro is active
+        if (typeof perfectNitroActive !== 'undefined' && perfectNitroActive) {
+            bigFill.style.background = 'linear-gradient(180deg,#a8eaff 0%,#33ccff 50%,#0099cc 100%)';
+            bigFill.style.boxShadow = '0 0 22px rgba(80,220,255,1),0 0 48px rgba(80,220,255,.6),inset 0 2px 0 rgba(255,255,255,.5)';
         } else {
-            bigFill.style.background = 'linear-gradient(90deg,#aa3333 0%,#ff6b35 100%)';
-            bigFill.style.boxShadow = '0 0 8px rgba(170,51,51,.6)';
+            bigFill.style.background = 'linear-gradient(180deg,#ffe04d 0%,#ffb627 45%,#ff8c00 100%)';
+            bigFill.style.boxShadow = '0 0 18px rgba(255,176,40,.85),0 0 36px rgba(255,120,40,.55),inset 0 2px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(180,80,0,.45)';
         }
     }
 
@@ -85,25 +87,8 @@ function updateHUD() {
 
     const positions = getPositions();
     const playerPos = positions.findIndex(p => p.isPlayer) + 1;
-    const suffixes = ['st','nd','rd'];
     const posEl = _getHudEl('hud-position');
-    posEl.textContent = playerPos + (suffixes[playerPos - 1] || 'th');
-
-    // Position color — gold for 1st, highlight changes
-    if (playerPos === 1) {
-        posEl.style.color = '#f7c948';
-        posEl.style.textShadow = '0 0 15px rgba(247,201,72,.5)';
-    } else if (playerPos <= 3) {
-        posEl.style.color = '#4ecdc4';
-        posEl.style.textShadow = '0 0 10px rgba(78,205,196,.3)';
-    } else {
-        posEl.style.color = '#ff6b9d';
-        posEl.style.textShadow = '0 0 10px rgba(255,107,157,.3)';
-    }
-
-    const mins = Math.floor(raceTime / 60);
-    const secs = Math.floor(raceTime % 60);
-    _getHudEl('hud-time').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    if (posEl) posEl.textContent = playerPos;
 
     // Only rebuild positions panel every 200ms
     const now = performance.now();

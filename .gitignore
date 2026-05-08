@@ -24,3 +24,13 @@ package-lock.json
 
 # Background server / tunnel logs
 *.log
+
+# User-supplied music tracks (copyright-sensitive — keep local only)
+music/*.mp3
+music/*.ogg
+music/*.wav
+
+# User-supplied real engine recordings
+sounds/*.mp3
+sounds/*.ogg
+sounds/*.wav

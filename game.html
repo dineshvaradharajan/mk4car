@@ -7,6 +7,9 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
     <title>Racing For Life</title>
+    <link rel="icon" type="image/png" href="models/menu-logo.png">
+    <link rel="shortcut icon" type="image/png" href="models/menu-logo.png">
+    <link rel="apple-touch-icon" href="models/menu-logo.png">
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
     <script src="https://unpkg.com/earcut@2.2.4/dist/earcut.min.js"></script>
@@ -242,6 +245,19 @@
 </head>
 <body>
 <canvas id="renderCanvas"></canvas>
+<!-- Spotify mini-player — playlist plays during races. Click Play once to
+     start (browsers block auto-audio until a user gesture). Drag to move,
+     click the chevron to collapse. -->
+<div id="spotify-widget" style="display:none;position:fixed;bottom:14px;left:14px;z-index:9999;width:340px;border-radius:14px;overflow:hidden;box-shadow:0 12px 32px rgba(0,0,0,.55),0 0 0 1px rgba(255,107,53,.45);transition:transform .25s ease,opacity .25s ease">
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 10px;background:linear-gradient(90deg,#1a1a2a,#10101a);font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#ff6b35">
+        <span style="flex:1">🎵 Race Playlist</span>
+        <button id="spotify-toggle" onclick="(function(){var w=document.getElementById('spotify-widget');var i=document.getElementById('spotify-iframe');var c=w.dataset.collapsed==='1';w.dataset.collapsed=c?'0':'1';i.style.display=c?'block':'none';this.textContent=c?'▾':'▴';}).call(this)" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:2px 8px;cursor:pointer;font-size:11px">▾</button>
+    </div>
+    <iframe id="spotify-iframe"
+        src="https://open.spotify.com/embed/playlist/0C4h6P7fC9u2SiOEv2QunZ?utm_source=generator&theme=0"
+        width="340" height="152" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        loading="lazy" style="display:block;border:0;background:#000"></iframe>
+</div>
 <div id="rotate-hint">
     <div class="rotate-icon">📱↔️</div>
     <p>Rotate your device to landscape for the best racing experience!</p>
@@ -262,13 +278,157 @@
         <button class="menu-btn primary" id="login-btn" onclick="handleLogin()" style="width:100%;">Sign In</button>
     </div>
 </div>
-<div id="main-menu" class="screen">
-    <div class="game-title">RACING FOR LIFE</div>
-    <div class="game-subtitle">3D Racing Championship</div>
-    <div class="user-badge" id="user-badge"><div class="avatar" id="user-avatar">?</div><span id="user-display-name">Player</span><button class="logout-btn" onclick="logout()">[logout]</button></div>
-    <div style="margin-bottom:20px"><div class="progress-container"><div style="color:#aaa;font-size:13px;margin-bottom:4px">Level Progress: <span id="player-level">Beginner</span></div><div class="progress-bar"><div class="progress-fill" id="level-progress" style="width:0%"></div></div><div class="progress-label"><span id="xp-text">0 / 100 XP</span></div></div></div>
-    <button class="menu-btn primary" onclick="showScreen('car-select')">Start Race</button>
-    <button class="menu-btn secondary" onclick="showScreen('how-to-play')">How to Play</button>
+<div id="splash-screen" class="screen" style="display:none;padding:0;background:#050308">
+    <div style="position:absolute;inset:0;overflow:hidden;background:linear-gradient(180deg,#1a1218 0%,#251820 30%,#180f18 60%,#0a0608 100%)">
+
+        <!-- Distant city silhouette: left & right warm-lit buildings -->
+        <div style="position:absolute;left:0;top:0;bottom:35%;width:38%;background:
+            linear-gradient(90deg,rgba(255,140,90,.28),rgba(50,30,40,0) 80%),
+            linear-gradient(180deg,rgba(20,10,15,.0),rgba(10,5,8,.85)),
+            repeating-linear-gradient(180deg,rgba(255,220,150,.10) 0 4px,transparent 4px 22px),
+            repeating-linear-gradient(90deg,rgba(0,0,0,.55) 0 60px,rgba(0,0,0,.20) 60px 120px,rgba(0,0,0,.55) 120px 180px);
+            filter:blur(3px);opacity:.85"></div>
+        <div style="position:absolute;right:0;top:0;bottom:35%;width:38%;background:
+            linear-gradient(270deg,rgba(255,60,60,.30),rgba(50,30,40,0) 80%),
+            linear-gradient(180deg,rgba(20,10,15,.0),rgba(10,5,8,.85)),
+            repeating-linear-gradient(180deg,rgba(255,220,150,.10) 0 4px,transparent 4px 22px),
+            repeating-linear-gradient(90deg,rgba(0,0,0,.55) 0 70px,rgba(0,0,0,.20) 70px 140px,rgba(0,0,0,.55) 140px 210px);
+            filter:blur(3px);opacity:.85"></div>
+
+        <!-- Sky / vanishing light at the centre of the avenue -->
+        <div style="position:absolute;left:50%;top:24%;width:34%;height:42%;transform:translateX(-50%);background:radial-gradient(ellipse at center,rgba(255,210,180,.65) 0%,rgba(180,80,80,.30) 35%,rgba(20,10,15,0) 70%);filter:blur(8px)"></div>
+
+        <!-- Cobblestone street with vanishing perspective -->
+        <div style="position:absolute;left:0;right:0;bottom:0;height:55%;perspective:680px;perspective-origin:50% 0;overflow:hidden">
+            <div style="position:absolute;left:-20%;right:-20%;top:0;height:200%;transform-origin:50% 0;transform:rotateX(70deg);background:
+                radial-gradient(ellipse at 50% 0,rgba(255,200,170,.35) 0%,rgba(0,0,0,0) 45%),
+                repeating-conic-gradient(from 0deg at 50% 0,rgba(255,255,255,.04) 0 1deg,rgba(0,0,0,.12) 1deg 2deg),
+                repeating-linear-gradient(0deg,rgba(255,255,255,.05) 0 22px,rgba(0,0,0,.10) 22px 44px),
+                repeating-linear-gradient(90deg,rgba(255,255,255,.06) 0 26px,rgba(0,0,0,.10) 26px 52px),
+                linear-gradient(180deg,#1a1015 0%,#0a0608 100%)"></div>
+            <!-- darken edges -->
+            <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,0) 18%,rgba(0,0,0,0) 82%,rgba(0,0,0,.7) 100%),linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 35%,rgba(0,0,0,0) 80%,rgba(0,0,0,.85) 100%)"></div>
+        </div>
+
+        <!-- Diagonal cinematic light streaks crossing the upper-right -->
+        <div style="position:absolute;top:-25%;left:55%;width:140px;height:160%;background:linear-gradient(180deg,rgba(255,240,220,0) 0%,rgba(255,240,220,.18) 50%,rgba(255,240,220,0) 100%);transform:rotate(20deg);filter:blur(2px);pointer-events:none"></div>
+        <div style="position:absolute;top:-25%;left:70%;width:240px;height:160%;background:linear-gradient(180deg,rgba(255,80,90,0) 0%,rgba(255,80,90,.42) 50%,rgba(255,80,90,0) 100%);transform:rotate(20deg);filter:blur(1px);pointer-events:none"></div>
+        <div style="position:absolute;top:-25%;left:88%;width:120px;height:160%;background:linear-gradient(180deg,rgba(180,200,255,0) 0%,rgba(180,200,255,.30) 50%,rgba(180,200,255,0) 100%);transform:rotate(20deg);filter:blur(1px);pointer-events:none"></div>
+
+        <!-- Hero supercar — rear-3/4 stylized silhouette, large -->
+        <svg viewBox="0 0 1000 540" preserveAspectRatio="xMidYMid meet" style="position:absolute;left:50%;top:50%;transform:translate(-50%,-46%);width:min(900px,85vw);filter:drop-shadow(0 60px 80px rgba(255,40,30,.55)) drop-shadow(0 0 120px rgba(255,40,30,.28))" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="bodyG" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#ff5848"/>
+                    <stop offset=".4" stop-color="#cc1f12"/>
+                    <stop offset=".75" stop-color="#7a0a07"/>
+                    <stop offset="1" stop-color="#1a0303"/>
+                </linearGradient>
+                <linearGradient id="hoodG" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#3a0a08"/>
+                    <stop offset=".5" stop-color="#a01b10"/>
+                    <stop offset="1" stop-color="#ff5848"/>
+                </linearGradient>
+                <linearGradient id="windG" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#0a0a14"/>
+                    <stop offset="1" stop-color="#1a1a28"/>
+                </linearGradient>
+                <radialGradient id="tireG" cx=".4" cy=".4" r=".7">
+                    <stop offset="0" stop-color="#3a3a3a"/>
+                    <stop offset="1" stop-color="#040404"/>
+                </radialGradient>
+                <radialGradient id="rimG" cx=".5" cy=".5" r=".5">
+                    <stop offset="0" stop-color="#e0e0e8"/>
+                    <stop offset=".7" stop-color="#888"/>
+                    <stop offset="1" stop-color="#222"/>
+                </radialGradient>
+            </defs>
+
+            <!-- Ground shadow -->
+            <ellipse cx="500" cy="500" rx="380" ry="22" fill="#000" opacity=".75"/>
+
+            <!-- Wheels (front pair, foreshortened) -->
+            <g>
+                <ellipse cx="200" cy="430" rx="74" ry="78" fill="url(#tireG)"/>
+                <circle cx="200" cy="430" r="44" fill="url(#rimG)"/>
+                <g stroke="#1a1a1a" stroke-width="6" fill="none"><line x1="200" y1="392" x2="200" y2="468"/><line x1="162" y1="430" x2="238" y2="430"/><line x1="174" y1="404" x2="226" y2="456"/><line x1="226" y1="404" x2="174" y2="456"/></g>
+                <ellipse cx="800" cy="430" rx="74" ry="78" fill="url(#tireG)"/>
+                <circle cx="800" cy="430" r="44" fill="url(#rimG)"/>
+                <g stroke="#1a1a1a" stroke-width="6" fill="none"><line x1="800" y1="392" x2="800" y2="468"/><line x1="762" y1="430" x2="838" y2="430"/><line x1="774" y1="404" x2="826" y2="456"/><line x1="826" y1="404" x2="774" y2="456"/></g>
+            </g>
+
+            <!-- Lower body — wide aggressive front splitter -->
+            <path d="M120 470 Q160 350 280 320 Q400 290 500 290 Q600 290 720 320 Q840 350 880 470 Q820 500 500 500 Q180 500 120 470 Z" fill="url(#bodyG)"/>
+
+            <!-- Hood / upper body -->
+            <path d="M210 320 Q300 220 500 200 Q700 220 790 320 Q700 270 500 260 Q300 270 210 320 Z" fill="url(#hoodG)"/>
+
+            <!-- Windshield -->
+            <path d="M280 270 Q400 170 500 165 Q600 170 720 270 Q620 240 500 235 Q380 240 280 270 Z" fill="url(#windG)"/>
+
+            <!-- Roof line glow -->
+            <path d="M310 200 Q500 120 690 200" stroke="#ff8c7a" stroke-width="4" fill="none" opacity=".55"/>
+
+            <!-- Headlights (slim slits) -->
+            <path d="M150 360 Q220 340 290 350 L290 366 Q220 360 150 376 Z" fill="#ffe8b0" opacity=".95"/>
+            <path d="M850 360 Q780 340 710 350 L710 366 Q780 360 850 376 Z" fill="#ffe8b0" opacity=".95"/>
+            <!-- Headlight halos -->
+            <ellipse cx="220" cy="360" rx="120" ry="18" fill="#fff5d8" opacity=".22" filter="blur(8px)"/>
+            <ellipse cx="780" cy="360" rx="120" ry="18" fill="#fff5d8" opacity=".22" filter="blur(8px)"/>
+
+            <!-- Grille / front intake -->
+            <path d="M340 410 L660 410 L640 460 L360 460 Z" fill="#070306" stroke="#222" stroke-width="2"/>
+            <g stroke="#1a1a1a" stroke-width="2"><line x1="380" y1="430" x2="620" y2="430"/><line x1="385" y1="445" x2="615" y2="445"/></g>
+
+            <!-- Brand badge -->
+            <circle cx="500" cy="320" r="14" fill="#ffd200" stroke="#aa1010" stroke-width="3"/>
+
+            <!-- Side air vents -->
+            <path d="M120 410 L60 430 L60 460 L130 450 Z" fill="#0a0204" opacity=".75"/>
+            <path d="M880 410 L940 430 L940 460 L870 450 Z" fill="#0a0204" opacity=".75"/>
+
+            <!-- Side mirrors -->
+            <path d="M250 280 L210 268 L218 290 Z" fill="#5a0a08"/>
+            <path d="M750 280 L790 268 L782 290 Z" fill="#5a0a08"/>
+
+            <!-- Reflection highlight -->
+            <path d="M280 308 Q500 252 720 308 Q500 280 280 308 Z" fill="#fff" opacity=".18"/>
+        </svg>
+
+        <!-- Shield + title — bottom centre -->
+        <div style="position:absolute;left:50%;bottom:14%;transform:translateX(-50%);text-align:center;z-index:5;width:100%;pointer-events:none">
+            <svg viewBox="0 0 120 140" style="width:104px;height:auto;margin:0 auto 14px;display:block;filter:drop-shadow(0 0 22px rgba(255,60,60,.85))">
+                <defs>
+                    <linearGradient id="shieldFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="#1a1014"/>
+                        <stop offset="1" stop-color="#0a0608"/>
+                    </linearGradient>
+                </defs>
+                <path d="M60 4 L112 22 L108 80 Q108 110 60 134 Q12 110 12 80 L8 22 Z" fill="url(#shieldFill)" stroke="#ff2a2a" stroke-width="3"/>
+                <text x="60" y="96" font-family="'Segoe UI',sans-serif" font-size="62" font-weight="900" fill="#fff" text-anchor="middle" style="letter-spacing:-2px">∞</text>
+            </svg>
+            <div style="font-size:clamp(44px,7.6vw,92px);font-weight:900;letter-spacing:8px;color:#fff;line-height:.95;background:linear-gradient(180deg,#fff 0%,#fff 55%,#a8b3c0 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 4px 18px rgba(0,0,0,.9))">RACING</div>
+            <div style="font-size:clamp(22px,3.6vw,42px);font-weight:700;letter-spacing:18px;color:#ff2a2a;margin-top:8px;text-shadow:0 0 22px rgba(255,40,40,.9),0 4px 20px rgba(0,0,0,.7)">FOR LIFE</div>
+        </div>
+
+        <div style="position:absolute;bottom:4%;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.6);font-size:12px;letter-spacing:5px;text-transform:uppercase;animation:tapPulse 1.6s ease-in-out infinite">Tap to continue</div>
+        <style>@keyframes tapPulse{0%,100%{opacity:.4}50%{opacity:.95}}</style>
+    </div>
+</div>
+<div id="main-menu" class="screen" style="padding:0;background:#000">
+    <!-- Hero background — entire image fits (contain), centred so the car +
+         "RACING FOR LIFE" logo are always fully visible. No darkening overlay
+         so the artwork reads at full brightness. -->
+    <img src="models/menu-bg.png" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 35%;z-index:0;pointer-events:none"/>
+    <!-- Light scrim only at the very bottom for button legibility -->
+    <div aria-hidden="true" style="position:absolute;left:0;right:0;bottom:0;height:30%;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.55) 70%,rgba(0,0,0,.88) 100%)"></div>
+    <!-- Menu UI — bottom-centred, scaled up for visual weight against the artwork -->
+    <div style="position:relative;z-index:2;width:100%;min-height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding:32px 16px 44px;gap:14px">
+        <div class="user-badge" id="user-badge" style="transform:scale(1.3);transform-origin:center;margin-bottom:14px"><div class="avatar" id="user-avatar">?</div><span id="user-display-name">Player</span><button class="logout-btn" onclick="logout()">[logout]</button></div>
+        <div style="margin:14px 0 22px;width:min(560px,90vw)"><div class="progress-container"><div style="color:#fff;font-size:18px;margin-bottom:6px;text-shadow:0 1px 4px rgba(0,0,0,.9);font-weight:600">Level Progress: <span id="player-level">Beginner</span></div><div class="progress-bar" style="height:14px;border-radius:8px"><div class="progress-fill" id="level-progress" style="width:0%"></div></div><div class="progress-label" style="font-size:15px;margin-top:4px;text-shadow:0 1px 4px rgba(0,0,0,.9)"><span id="xp-text">0 / 100 XP</span></div></div></div>
+        <button class="menu-btn primary" onclick="showScreen('car-select')" style="font-size:22px;padding:18px 64px;letter-spacing:4px;border-radius:14px;min-width:280px">Start Race</button>
+        <button class="menu-btn secondary" onclick="showScreen('how-to-play')" style="font-size:18px;padding:14px 50px;letter-spacing:3px;border-radius:14px;min-width:240px">How to Play</button>
+    </div>
 </div>
 <div id="how-to-play" class="screen">
     <div class="section-title">How to Play</div>
@@ -350,17 +510,39 @@
 </div>
 <div id="countdown"></div>
 <div id="hud">
-    <div class="hud-panel"><div class="hud-speed" id="hud-speed">0</div><div class="hud-speed-unit">KM/H</div><div id="drift-indicator" style="display:none;color:#ff6b35;font-weight:bold;font-size:14px;margin-top:4px;text-shadow:0 0 8px #ff6b35">DRIFT</div></div>
-    <div style="text-align:center"><div class="hud-panel"><div class="hud-label">Lap</div><div class="hud-value hud-lap"><span id="hud-lap">1</span> / <span id="hud-total-laps">3</span></div></div></div>
-    <div style="text-align:right"><div class="hud-panel"><div class="hud-label">Position</div><div class="hud-value hud-pos" id="hud-position">1st</div><div style="margin-top:5px"><div class="hud-label">Time</div><div class="hud-value hud-time" id="hud-time">0:00</div></div></div></div>
-</div>
-<div id="big-nitro" style="position:fixed;top:118px;left:50%;transform:translateX(-50%);z-index:55;display:none;width:min(900px,82vw);pointer-events:none">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-        <div style="color:#aaa;font-size:11px;letter-spacing:3px;text-transform:uppercase;text-shadow:0 0 4px rgba(0,0,0,.8)">⚡ NITRO</div>
-        <div id="nitro-pct" style="color:#fff;font-size:13px;font-weight:900;text-shadow:0 0 4px rgba(0,0,0,.8)">100%</div>
+    <!-- LEFT angled banner — Pause + Position + Distance -->
+    <div style="display:flex;align-items:stretch;gap:0;pointer-events:auto">
+        <button onclick="pauseRace()" aria-label="Pause" style="background:linear-gradient(180deg,#1a1a2a 0%,#0a0a14 100%);color:#fff;border:1px solid rgba(255,255,255,.2);border-right:none;font-size:24px;font-weight:900;width:64px;height:84px;cursor:pointer;clip-path:polygon(0 0,100% 0,100% 100%,0 100%);display:flex;align-items:center;justify-content:center;border-radius:0">⏸</button>
+        <div style="background:linear-gradient(180deg,#16161e 0%,#08080c 100%);padding:10px 38px 10px 22px;clip-path:polygon(0 0,100% 0,calc(100% - 26px) 100%,0 100%);min-width:200px;display:flex;flex-direction:column;justify-content:center;gap:4px;box-shadow:inset 0 -3px 0 #ff6b35">
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="color:#888;font-size:11px;letter-spacing:3px;font-weight:700">POS.</span><span style="font-size:30px;font-weight:900;font-style:italic;color:#fff;line-height:1"><span id="hud-position">1</span><span style="color:#888;font-size:18px">/<span id="hud-total-opps">8</span></span></span></div>
+            <div style="display:flex;align-items:baseline;gap:8px"><span style="color:#888;font-size:11px;letter-spacing:3px;font-weight:700">DIST.</span><span style="font-size:24px;font-weight:900;font-style:italic;color:#ff6b35;line-height:1"><span id="hud-dist">0</span>%</span></div>
+        </div>
     </div>
-    <div style="height:20px;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);border-radius:11px;border:1px solid rgba(255,107,53,.4);overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.5)">
-        <div id="big-nitro-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#ff6b35 0%,#ff8c42 35%,#f7c948 70%,#00ddff 100%);transition:width .15s ease-out;box-shadow:0 0 20px rgba(255,107,53,.6)"></div>
+
+    <!-- CENTER — Big nitro bar lives in #big-nitro below; this is just a spacer -->
+    <div></div>
+
+    <!-- RIGHT angled banner — Speed -->
+    <div style="background:linear-gradient(180deg,#16161e 0%,#08080c 100%);padding:8px 28px 8px 50px;clip-path:polygon(26px 0,100% 0,100% 100%,0 100%);display:flex;align-items:center;gap:12px;box-shadow:inset 0 -3px 0 #ff6b35;min-width:200px">
+        <span style="color:#888;font-size:13px;letter-spacing:3px;font-weight:700;align-self:flex-start;margin-top:6px">KM/H</span>
+        <span class="hud-speed" id="hud-speed" style="font-size:64px;font-weight:900;font-style:italic;color:#fff;line-height:1;text-shadow:0 0 18px rgba(255,107,53,.4)">0</span>
+        <div id="drift-indicator" style="display:none;color:#ff6b35;font-weight:bold;font-size:14px;margin-left:10px;text-shadow:0 0 8px #ff6b35">DRIFT</div>
+    </div>
+</div>
+<div id="big-nitro" style="position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:55;display:none;width:min(720px,46vw);pointer-events:none">
+    <!-- Track / outer chassis with diagonal slashes on the right -->
+    <div style="position:relative;height:30px;background:rgba(0,0,0,.55);backdrop-filter:blur(8px);clip-path:polygon(0 0,100% 0,calc(100% - 16px) 100%,0 100%);border-bottom:1px solid rgba(255,255,255,.05);box-shadow:0 8px 24px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06)">
+        <!-- Yellow filled portion (0% → current nitro%) -->
+        <div id="big-nitro-fill" style="position:absolute;top:4px;bottom:4px;left:5px;width:96%;border-radius:2px;background:linear-gradient(180deg,#ffe04d 0%,#ffb627 45%,#ff8c00 100%);transition:width .12s linear;box-shadow:0 0 18px rgba(255,176,40,.85),0 0 36px rgba(255,120,40,.55),inset 0 2px 0 rgba(255,255,255,.5),inset 0 -3px 0 rgba(180,80,0,.45)"></div>
+        <!-- Cyan PERFECT ZONE — fixed band you must hit Shift inside of -->
+        <div id="big-nitro-zone" style="position:absolute;top:4px;bottom:4px;left:38%;width:13%;border-radius:1px;background:linear-gradient(180deg,#a8eaff 0%,#33ccff 50%,#0099cc 100%);box-shadow:0 0 16px rgba(80,220,255,.95),0 0 32px rgba(80,220,255,.55),inset 0 0 0 1px rgba(255,255,255,.4);pointer-events:none"></div>
+        <!-- Right-side diagonal hatching (decorative) -->
+        <div style="position:absolute;top:0;bottom:0;right:0;width:120px;background:repeating-linear-gradient(110deg,rgba(255,255,255,0) 0 4px,rgba(255,255,255,.10) 4px 7px);pointer-events:none"></div>
+    </div>
+    <!-- Subtle label below the bar -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;padding:0 4px">
+        <span style="color:rgba(255,255,255,.5);font-size:10px;letter-spacing:3px;font-weight:700;text-transform:uppercase">Nitro</span>
+        <span id="nitro-pct" style="color:rgba(255,255,255,.7);font-size:11px;font-weight:900;text-shadow:0 0 4px rgba(0,0,0,.8)">100%</span>
     </div>
 </div>
 <div id="positions-panel"></div>
@@ -431,19 +613,19 @@ setInterval(() => {
 }, 250);
 </script>
 <script>window.__V__='20260503f';</script>
-<script src="js/config.js?v=20260503h"></script>
-<script src="js/login.js?v=20260503h"></script>
-<script src="js/sound.js?v=20260503h"></script>
-<script src="js/scene.js?v=20260503h"></script>
-<script src="js/cars.js?v=20260503h"></script>
-<script src="js/track.js?v=20260503h"></script>
-<script src="js/effects.js?v=20260503h"></script>
-<script src="js/hud.js?v=20260503h"></script>
-<script src="js/physics.js?v=20260503h"></script>
-<script src="js/race.js?v=20260503h"></script>
-<script src="js/input.js?v=20260503h"></script>
-<script src="js/touch.js?v=20260503h"></script>
-<script src="js/preview.js?v=20260503h"></script>
+<script src="js/config.js?v=20260508ah"></script>
+<script src="js/login.js?v=20260508ah"></script>
+<script src="js/sound.js?v=20260508ah"></script>
+<script src="js/scene.js?v=20260508ah"></script>
+<script src="js/cars.js?v=20260508ah"></script>
+<script src="js/track.js?v=20260508ah"></script>
+<script src="js/effects.js?v=20260508ah"></script>
+<script src="js/hud.js?v=20260508ah"></script>
+<script src="js/physics.js?v=20260508ah"></script>
+<script src="js/race.js?v=20260508ah"></script>
+<script src="js/input.js?v=20260508ah"></script>
+<script src="js/touch.js?v=20260508ah"></script>
+<script src="js/preview.js?v=20260508ah"></script>
 <!-- Inline code removed — all game logic is in js/ files -->
 <script>
 </script>

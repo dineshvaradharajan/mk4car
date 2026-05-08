@@ -363,9 +363,12 @@ function cloneModelInto(parentNode, originalMeshes, modelInfo, color) {
     const targetLen = modelInfo.targetLen || 3.2;
     let fitScale = 1;
     if (raw) {
-        const maxDim = Math.max(raw.size.x, raw.size.y, raw.size.z);
-        if (maxDim > 0.001 && maxDim < 10000) {
-            fitScale = targetLen / maxDim;
+        // Normalize on the longest horizontal axis (length), ignoring height.
+        // Otherwise a car with a tall fin/canopy gets shrunk relative to a
+        // low-slung car with the same wheelbase.
+        const lengthDim = Math.max(raw.size.x, raw.size.z);
+        if (lengthDim > 0.001 && lengthDim < 10000) {
+            fitScale = targetLen / lengthDim;
         }
     }
     parentNode.scaling = new BABYLON.Vector3(fitScale, fitScale, fitScale);

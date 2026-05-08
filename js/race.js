@@ -13,8 +13,10 @@ let finishXP = 0;
 
 function startRace() {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    // Duck the menu music while the race plays so engine sounds dominate
-    if (typeof MusicEngine !== 'undefined') MusicEngine.duck(0.25);
+    // Mute the procedural synth, then start the local MP3 playlist (the user's
+    // own pop tracks dropped in /music/).
+    if (typeof MusicEngine !== 'undefined') { try { MusicEngine.setMuted(true); } catch(e) {} }
+    if (typeof MusicPlayer !== 'undefined') { try { MusicPlayer.start(); MusicPlayer.setVolume(0.75); } catch(e) {} }
     initScene();
 
     // Reset replay state
@@ -49,6 +51,16 @@ function startRace() {
             GameState.racing = true;
             GameState.paused = false;
             SoundEngine.init();
+            // Asphalt-style audio: silence the engine entirely so the music
+            // dominates the race. Tiny residual rumble (~0.05) keeps the car
+            // feeling like it's moving without overpowering the soundtrack.
+            try {
+                const ctx = SoundEngine.ctx;
+                if (ctx && SoundEngine._master) {
+                    const t = ctx.currentTime + 0.2;
+                    SoundEngine._master.gain.linearRampToValueAtTime(0.05, t);
+                }
+            } catch(e) {}
             if (typeof initParticleSystems === 'function') initParticleSystems();
 
             document.getElementById('hud').classList.add('active');
@@ -126,11 +138,18 @@ function animate() {
 
     // Record frame for replay (every 3rd frame to save memory)
     if (replayFrames.length === 0 || raceTime - (replayFrames[replayFrames.length - 1]?.t || 0) > 0.05) {
+        const ais = aiCars.map(ai => ({
+            x: ai.mesh.position.x,
+            y: ai.mesh.position.y,
+            z: ai.mesh.position.z,
+            heading: ai.mesh.rotation.y,
+        }));
         replayFrames.push({
             t: raceTime,
             px: carX, py: carY, pz: carZ,
             heading: carHeading,
-            speed: playerSpeed
+            speed: playerSpeed,
+            ais,
         });
     }
 
@@ -221,6 +240,35 @@ function startReplay() {
     replayDuration = replayFrames.length > 0 ? replayFrames[replayFrames.length - 1].t : 10;
     replayCamAngle = 0;
 
+    // Silence the entire engine chain (noise rumble + hiss + harmonic tones)
+    // by ducking the master gain. The replay should be music-only.
+    try {
+        const ctx = SoundEngine.ctx;
+        const t = ctx ? ctx.currentTime + 0.2 : 0;
+        if (SoundEngine._master)     SoundEngine._master.gain.linearRampToValueAtTime(0, t);
+        if (SoundEngine.engineGain)  SoundEngine.engineGain.gain.linearRampToValueAtTime(0, t);
+        if (SoundEngine.engineGain2) SoundEngine.engineGain2.gain.linearRampToValueAtTime(0, t);
+        if (SoundEngine.engineGain3) SoundEngine.engineGain3.gain.linearRampToValueAtTime(0, t);
+        if (SoundEngine._lowG)       SoundEngine._lowG.gain.linearRampToValueAtTime(0, t);
+        if (SoundEngine._hissG)      SoundEngine._hissG.gain.linearRampToValueAtTime(0, t);
+    } catch(e) {}
+    if (typeof MusicEngine !== 'undefined') {
+        // Make sure it's started (autoplay policies may have left it suspended)
+        // and pump the gain past the normal targetVolume so the replay actually
+        // *feels* like a music montage.
+        try { MusicEngine.start(); } catch(e) {}
+        try {
+            if (MusicEngine.ctx && MusicEngine.ctx.state === 'suspended') {
+                MusicEngine.ctx.resume();
+            }
+            if (MusicEngine.master && !MusicEngine.muted) {
+                const t = MusicEngine.ctx.currentTime + 0.4;
+                MusicEngine.master.gain.cancelScheduledValues(MusicEngine.ctx.currentTime);
+                MusicEngine.master.gain.linearRampToValueAtTime(0.55, t);
+            }
+        } catch(e) {}
+    }
+
     // Hide race HUD
     document.getElementById('hud').classList.remove('active');
     document.getElementById('positions-panel').classList.remove('active');
@@ -261,14 +309,20 @@ function buildReplayLeaderboard() {
         const time = document.createElement('div');
         const finished = entry.finished || entry.isPlayer;
         time.className = 'lb-time' + (finished ? ' finished' : '');
+        let ft;
         if (finished) {
-            const ft = entry.finishTime || 0;
-            const mins = Math.floor(ft / 60);
-            const secs = (ft % 60).toFixed(1);
-            time.textContent = `${mins}:${secs.padStart(4, '0')}`;
+            ft = entry.finishTime || 0;
         } else {
-            time.textContent = 'DNF';
+            // Project an estimated finish time from race progress so every
+            // racer shows a real time instead of "DNF".
+            const totalLaps = Math.max(1, GameState.laps || 1);
+            const progress = (entry.lap || 0) + Math.min(1, Math.max(0, entry.t || 0));
+            const frac = Math.max(0.05, progress / totalLaps);
+            ft = (raceTime || 0) / frac;
         }
+        const mins = Math.floor(ft / 60);
+        const secs = (ft % 60).toFixed(1);
+        time.textContent = `${mins}:${secs.padStart(4, '0')}`;
 
         div.appendChild(pos);
         div.appendChild(name);
@@ -317,19 +371,27 @@ function animateReplay(dt) {
     playerCar.rotation.x = 0;
     playerCar.rotation.z = 0;
 
-    // AI cars drift slowly
-    aiCars.forEach(ai => {
-        ai.t += dt * 0.003;
-        if (ai.t > 1) ai.t -= 1;
-        const pos = getTrackPointAt(trackPoints, ai.t);
-        const dir = getTrackDirectionAt(trackPoints, ai.t);
-        const aiLerp = Math.min(1, 5 * dt);
-        ai.mesh.position.x += (pos.x - ai.mesh.position.x) * aiLerp;
-        ai.mesh.position.y += (pos.y + 0.15 - ai.mesh.position.y) * aiLerp;
-        ai.mesh.position.z += (pos.z - ai.mesh.position.z) * aiLerp;
-        ai.mesh.rotation.y = Math.atan2(dir.x, dir.z);
-        ai.mesh.rotation.z = 0;
+    // AI cars — replay their recorded positions in lockstep with the player
+    const f0Ais = f0.ais || [];
+    const f1Ais = f1.ais || f0Ais;
+    const aiLerp = Math.min(1, 12 * dt);
+    aiCars.forEach((ai, i) => {
+        const a0 = f0Ais[i];
+        const a1 = f1Ais[i] || a0;
+        if (!a0) return;
+        const ax = a0.x + (a1.x - a0.x) * smoothAlpha;
+        const ay = a0.y + (a1.y - a0.y) * smoothAlpha;
+        const az = a0.z + (a1.z - a0.z) * smoothAlpha;
+        let aHeadDiff = a1.heading - a0.heading;
+        while (aHeadDiff > Math.PI) aHeadDiff -= Math.PI * 2;
+        while (aHeadDiff < -Math.PI) aHeadDiff += Math.PI * 2;
+        const aHead = a0.heading + aHeadDiff * smoothAlpha;
+        ai.mesh.position.x += (ax - ai.mesh.position.x) * aiLerp;
+        ai.mesh.position.y += (ay - ai.mesh.position.y) * aiLerp;
+        ai.mesh.position.z += (az - ai.mesh.position.z) * aiLerp;
+        ai.mesh.rotation.y = aHead;
         ai.mesh.rotation.x = 0;
+        ai.mesh.rotation.z = 0;
     });
 
     // Cinematic camera — very smooth, slow follow
@@ -365,8 +427,8 @@ function animateReplay(dt) {
 function skipReplay() {
     replayMode = false;
     document.getElementById('replay-overlay').classList.remove('active');
-
-    // Now show the final result screen
+    // Stop the race playlist; menu music will resume via showScreen.
+    if (typeof MusicPlayer !== 'undefined') { try { MusicPlayer.stop(); } catch(e) {} }
     showResultScreen();
 }
 

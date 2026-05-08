@@ -116,8 +116,10 @@ function loginAs(username, data) {
     let last = null;
     try { last = localStorage.getItem('mk4racer_lastScreen'); } catch(e) {}
     const valid = last && document.getElementById(last)
-        && last !== 'login-screen' && last !== 'pause-screen';
-    showScreen(valid ? last : 'main-menu');
+        && last !== 'login-screen' && last !== 'pause-screen' && last !== 'splash-screen';
+    const next = valid ? last : 'main-menu';
+
+    showScreen(next);
 }
 
 function updateUserBadge() {
@@ -197,7 +199,7 @@ function showScreen(id) {
             }));
         } catch(e) {}
     }
-    if (id === 'main-menu') updateMainMenu();
+    if (id === 'main-menu') { updateMainMenu(); initMenuHeroCar(); } else { disposeMenuHeroCar(); }
     if (id === 'car-select') buildCarSelect();
     if (id === 'track-select') buildTrackSelect();
     if (id === 'race-config') buildRaceConfig();
@@ -690,4 +692,113 @@ function setOpponents(n) {
     document.querySelectorAll('.opp-btn').forEach(b => {
         b.style.borderColor = parseInt(b.dataset.opp) === n ? '#ff6b35' : '';
     });
+}
+
+// ── Cinematic menu hero car: loads a real GLB into a small Babylon scene
+// behind the main menu, replacing the SVG silhouette with an actual 3D car.
+let _menuHeroEngine = null, _menuHeroScene = null, _menuHeroCam = null;
+function initMenuHeroCar() {
+    if (_menuHeroEngine) return;
+    const canvas = document.getElementById('menu-hero-canvas');
+    if (!canvas || typeof BABYLON === 'undefined') return;
+
+    try {
+        _menuHeroEngine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, alpha: true, antialias: true });
+        const scene = _menuHeroScene = new BABYLON.Scene(_menuHeroEngine);
+        scene.clearColor = new BABYLON.Color4(0, 0, 0, 0); // transparent — show the cinematic backdrop
+        scene.useRightHandedSystem = true;
+
+        // Front-3/4 hero shot
+        const cam = _menuHeroCam = new BABYLON.ArcRotateCamera('mhCam', -Math.PI / 2 + 0.15, Math.PI / 2 - 0.18, 7.4, new BABYLON.Vector3(0, 0.5, 0), scene);
+        cam.fov = 0.55;
+        cam.minZ = 0.05; cam.maxZ = 80;
+
+        // Three-point lighting matching the warm dusk vibe
+        const hemi = new BABYLON.HemisphericLight('mhHemi', new BABYLON.Vector3(0, 1, 0.2), scene);
+        hemi.intensity = 0.65; hemi.diffuse = new BABYLON.Color3(1, 0.85, 0.7); hemi.groundColor = new BABYLON.Color3(0.15, 0.08, 0.12);
+        const key = new BABYLON.DirectionalLight('mhKey', new BABYLON.Vector3(-0.4, -0.8, -0.5).normalize(), scene);
+        key.intensity = 1.2; key.diffuse = new BABYLON.Color3(1, 0.9, 0.78); key.specular = new BABYLON.Color3(1, 0.85, 0.75);
+        const rim = new BABYLON.DirectionalLight('mhRim', new BABYLON.Vector3(0.7, -0.1, 0.4).normalize(), scene);
+        rim.intensity = 1.0; rim.diffuse = new BABYLON.Color3(1, 0.4, 0.4); rim.specular = new BABYLON.Color3(1, 0.4, 0.4);
+
+        try {
+            const envTex = BABYLON.CubeTexture.CreateFromPrefilteredData('https://assets.babylonjs.com/environments/environmentSpecular.env', scene);
+            scene.environmentTexture = envTex;
+            scene.environmentIntensity = 0.85;
+        } catch(e) {}
+
+        scene.imageProcessingConfiguration.toneMappingEnabled = true;
+        scene.imageProcessingConfiguration.toneMappingType = BABYLON.ImageProcessingConfiguration.TONEMAPPING_ACES;
+        scene.imageProcessingConfiguration.exposure = 1.1;
+        scene.imageProcessingConfiguration.contrast = 1.18;
+
+        try { const glow = new BABYLON.GlowLayer('mhGlow', scene); glow.intensity = 0.6; } catch(e) {}
+
+        // Load the Bugatti Chiron — top-tier hero car
+        BABYLON.SceneLoader.ImportMesh('', 'models/', 'bugatti-chiron.glb', scene, (meshes) => {
+            const root = new BABYLON.TransformNode('mhRoot', scene);
+            meshes.forEach(m => { if (!m.parent || m.parent === scene) m.parent = root; });
+
+            // Tint body panels Ferrari red
+            const target = BABYLON.Color3.FromHexString('#cc1a10');
+            meshes.forEach(m => {
+                if (!m.material) return;
+                const mat = m.material;
+                const base = mat.albedoColor || mat.diffuseColor;
+                if (!base) return;
+                const b = (base.r + base.g + base.b) / 3;
+                if (b > 0.35 && b < 0.95) {
+                    if ('albedoColor' in mat) mat.albedoColor = target;
+                    if ('diffuseColor' in mat) mat.diffuseColor = target;
+                    if ('metallic' in mat) { mat.metallic = 0.6; mat.roughness = 0.32; }
+                }
+                m.alwaysSelectAsActiveMesh = true;
+            });
+
+            // Frame to fill canvas
+            setTimeout(() => {
+                let lo = null, hi = null;
+                meshes.forEach(m => {
+                    if (!m.getBoundingInfo || (m.getClassName && m.getClassName() === 'TransformNode')) return;
+                    m.computeWorldMatrix(true);
+                    const bb = m.getBoundingInfo().boundingBox;
+                    if (!lo) { lo = bb.minimumWorld.clone(); hi = bb.maximumWorld.clone(); }
+                    else { lo.minimizeInPlace(bb.minimumWorld); hi.maximizeInPlace(bb.maximumWorld); }
+                });
+                if (lo) {
+                    const sz = hi.subtract(lo);
+                    const longestH = Math.max(sz.x, sz.z);
+                    if (longestH > 0.01) {
+                        const factor = 4.5 / longestH;
+                        root.scaling = new BABYLON.Vector3(factor, factor, factor);
+                        const cx = (lo.x + hi.x) / 2, cy = (lo.y + hi.y) / 2, cz = (lo.z + hi.z) / 2;
+                        root.position.set(-cx * factor, -lo.y * factor, -cz * factor);
+                    }
+                }
+                // Hide the SVG fallback now that the model is on screen
+                const svgFb = document.getElementById('menu-hero-svg');
+                if (svgFb) svgFb.style.display = 'none';
+            }, 80);
+        });
+
+        let t0 = performance.now();
+        _menuHeroEngine.runRenderLoop(() => {
+            if (!_menuHeroScene) return;
+            const t = (performance.now() - t0) * 0.0001;
+            cam.alpha = -Math.PI / 2 + 0.15 + Math.sin(t * 4) * 0.05;
+            cam.beta  = Math.PI / 2 - 0.18 + Math.sin(t * 3.2) * 0.02;
+            _menuHeroScene.render();
+        });
+        window.addEventListener('resize', () => { if (_menuHeroEngine) _menuHeroEngine.resize(); });
+    } catch(e) { console.warn('[menuHero]', e); }
+}
+
+function disposeMenuHeroCar() {
+    if (!_menuHeroEngine) return;
+    try { _menuHeroEngine.stopRenderLoop(); } catch(e) {}
+    try { _menuHeroScene && _menuHeroScene.dispose(); } catch(e) {}
+    try { _menuHeroEngine.dispose(); } catch(e) {}
+    _menuHeroEngine = null; _menuHeroScene = null; _menuHeroCam = null;
+    const svgFb = document.getElementById('menu-hero-svg');
+    if (svgFb) svgFb.style.display = '';
 }

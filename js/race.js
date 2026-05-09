@@ -15,8 +15,6 @@ function startRace() {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     // Mute the procedural synth, then start the local MP3 playlist (the user's
     // own pop tracks dropped in /music/).
-    if (typeof MusicEngine !== 'undefined') { try { MusicEngine.setMuted(true); } catch(e) {} }
-    if (typeof MusicPlayer !== 'undefined') { try { MusicPlayer.start(); MusicPlayer.setVolume(0.75); } catch(e) {} }
     initScene();
 
     // Reset replay state
@@ -67,7 +65,6 @@ function startRace() {
             document.getElementById('positions-panel').classList.add('active');
             document.getElementById('minimap').classList.add('active');
             document.getElementById('controls-help').classList.add('active');
-            document.getElementById('hud-total-laps').textContent = GameState.laps;
 
             lastFrameTime = performance.now();
             engine.runRenderLoop(animate);
@@ -252,23 +249,6 @@ function startReplay() {
         if (SoundEngine._lowG)       SoundEngine._lowG.gain.linearRampToValueAtTime(0, t);
         if (SoundEngine._hissG)      SoundEngine._hissG.gain.linearRampToValueAtTime(0, t);
     } catch(e) {}
-    if (typeof MusicEngine !== 'undefined') {
-        // Make sure it's started (autoplay policies may have left it suspended)
-        // and pump the gain past the normal targetVolume so the replay actually
-        // *feels* like a music montage.
-        try { MusicEngine.start(); } catch(e) {}
-        try {
-            if (MusicEngine.ctx && MusicEngine.ctx.state === 'suspended') {
-                MusicEngine.ctx.resume();
-            }
-            if (MusicEngine.master && !MusicEngine.muted) {
-                const t = MusicEngine.ctx.currentTime + 0.4;
-                MusicEngine.master.gain.cancelScheduledValues(MusicEngine.ctx.currentTime);
-                MusicEngine.master.gain.linearRampToValueAtTime(0.55, t);
-            }
-        } catch(e) {}
-    }
-
     // Hide race HUD
     document.getElementById('hud').classList.remove('active');
     document.getElementById('positions-panel').classList.remove('active');
@@ -427,8 +407,6 @@ function animateReplay(dt) {
 function skipReplay() {
     replayMode = false;
     document.getElementById('replay-overlay').classList.remove('active');
-    // Stop the race playlist; menu music will resume via showScreen.
-    if (typeof MusicPlayer !== 'undefined') { try { MusicPlayer.stop(); } catch(e) {} }
     showResultScreen();
 }
 
@@ -520,7 +498,6 @@ function quitRace() {
     GameState.paused = false;
     replayMode = false;
     SoundEngine.stop();
-    if (typeof MusicEngine !== 'undefined') MusicEngine.unduck();
 
     if (engine) engine.stopRenderLoop();
 

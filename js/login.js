@@ -216,27 +216,13 @@ function showScreen(id) {
         if (typeof disposeTrackPreview === 'function') disposeTrackPreview();
     }
 
-    // Hype music: only un-duck here. The actual start happens on the first
-    // user interaction (browsers block audio contexts before any user gesture,
-    // so calling start() during DOMContentLoaded would create a suspended
-    // context that never plays anything).
-    if (typeof MusicEngine !== 'undefined' && MusicEngine.started) {
-        if (id === 'main-menu' || id === 'car-select' || id === 'track-select' || id === 'race-config' || id === 'how-to-play') {
-            MusicEngine.unduck();
-        }
+    // YouTube background music plays continuously across every screen —
+    // menus, racing, results. Just keep it going; the user controls volume
+    // via the in-game mute button.
+    if (typeof MenuMusic !== 'undefined') {
+        try { MenuMusic.play(); } catch(e) {}
     }
 }
-
-// Start the music on the first user interaction. We keep listening so that if
-// the browser ever auto-suspends the context (some Safari versions do), the
-// next interaction will resume it.
-(function _attachMusicAutoStart() {
-    const kick = () => {
-        if (typeof MusicEngine !== 'undefined') MusicEngine.start();
-    };
-    document.addEventListener('pointerdown', kick);
-    document.addEventListener('keydown', kick);
-})();
 
 function updateMainMenu() {
     const lvl = getLevel();

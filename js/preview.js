@@ -180,10 +180,12 @@ function initCarPreview() {
         setTimeout(() => { if (_previewEngine) _previewEngine.resize(); }, 120);
     });
     updateCarPreview();
-    // Cycler disabled: it raced with the main preview and could leave it
-    // empty. Cards show 2D silhouettes; the main preview shows the 3D car.
-    // Each card's thumbnail gets captured the first time the user clicks it
-    // (via the auto-capture in _previewFitToTurntable).
+    // Generate thumbnails for every car in an offscreen scene so the strip
+    // cards aren't blank for cars the user hasn't clicked yet. Delayed so the
+    // main preview (already loading the selected car) gets the GPU first.
+    setTimeout(() => {
+        if (typeof preloadAllCarThumbnails === 'function') preloadAllCarThumbnails();
+    }, 600);
 }
 
 let _thumbCycleRunning = false;
@@ -544,8 +546,29 @@ function _previewFitToTurntable(root, label) {
     refreshAll(root);
     let meshes = collectMeshes(root);
     if (!meshes.length) { console.warn('[preview] no meshes under', label); return; }
-    // Filters disabled — load whatever the GLB ships, no dropping or splitting.
 
+    // Drop baked contact-shadow / decal planes some GLBs ship under the car.
+    // They pull the world bbox down — Inferno GT floated above the rings,
+    // Supra MK4 rendered as a visible black rectangle on the turntable.
+    // Heuristic: the mesh is flat (Y extent ≪ horizontal extent) AND sits in
+    // the bottom 15% of the car's overall height. The position check stops
+    // us from accidentally hiding flat panels at the top (roof, hood, spoiler).
+    const bPre = worldBounds(meshes);
+    if (bPre) {
+        const fullH = bPre.max.y - bPre.min.y;
+        const lowCut = bPre.min.y + fullH * 0.15;
+        meshes.forEach(m => {
+            const bb = m.getBoundingInfo().boundingBox;
+            const lo = bb.minimumWorld, hi = bb.maximumWorld;
+            const dx = hi.x - lo.x, dy = hi.y - lo.y, dz = hi.z - lo.z;
+            const longestXZ = Math.max(dx, dz);
+            if (longestXZ > 0.5 && dy < longestXZ * 0.05 && hi.y < lowCut) {
+                try { m.setEnabled(false); } catch(e) {}
+            }
+        });
+        meshes = collectMeshes(root);
+    }
+    if (!meshes.length) { console.warn('[preview] no meshes after shadow-plane filter for', label); return; }
 
     const b1 = worldBounds(meshes);
     if (!b1) { console.warn('[preview] no valid bounds for', label); return; }

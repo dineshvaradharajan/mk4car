@@ -629,13 +629,17 @@
 <div id="menu-music-frame" style="position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;pointer-events:none"></div>
 <script>
 const MenuMusic = (() => {
-    const VIDEO_ID = 'i0VVd4XKEvA';
+    // Continuous cross-screen background music. Both videos cycle on loop:
+    // YouTube plays VIDEO_IDS[0] first, then videos listed in playlist=,
+    // then loop=1 sends it back to the start. Add more IDs to extend.
+    const VIDEO_IDS = ['i0VVd4XKEvA', '5LZoz4cp-q8'];
     let player = null, ready = false, wantPlay = false, apiLoaded = false, muted = false;
     function init() {
         if (player || !apiLoaded || typeof YT === 'undefined' || !YT.Player) return;
         player = new YT.Player('menu-music-frame', {
-            videoId: VIDEO_ID,
-            playerVars: { autoplay: 0, controls: 0, loop: 1, playlist: VIDEO_ID,
+            videoId: VIDEO_IDS[0],
+            playerVars: { autoplay: 0, controls: 0, loop: 1,
+                          playlist: VIDEO_IDS.join(','),
                           modestbranding: 1, fs: 0, iv_load_policy: 3, rel: 0 },
             events: {
                 onReady: () => {
@@ -644,8 +648,13 @@ const MenuMusic = (() => {
                     if (wantPlay) try { player.playVideo(); } catch(e) {}
                 },
                 onStateChange: e => {
-                    // Some browsers ignore loop=1 — restart on end
-                    if (e.data === YT.PlayerState.ENDED) try { player.playVideo(); } catch(e) {}
+                    // Some browsers ignore loop=1 — when the whole playlist
+                    // finishes, jump back to the first video manually.
+                    if (e.data === YT.PlayerState.ENDED) {
+                        try { player.playVideoAt(0); } catch(_) {
+                            try { player.playVideo(); } catch(__) {}
+                        }
+                    }
                 },
             },
         });

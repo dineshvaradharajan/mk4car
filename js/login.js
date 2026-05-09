@@ -424,7 +424,7 @@ function buildTrackSelect() {
         const lockArt = '<div class="lock-icon" style="margin:8px 0;font-size:24px">&#128274;</div>';
         div.innerHTML = `
             ${locked ? lockArt : mini}
-            <div class="card-title">${t.name}</div>`;
+            <div class="card-title">${t.displayName || t.name}</div>`;
         if (!locked) div.onclick = () => { GameState.selectedTrack = i; buildTrackSelect(); };
         strip.appendChild(div);
     });
@@ -437,7 +437,7 @@ function buildTrackSelect() {
     if (!t) return;
     const nm = document.getElementById('track-preview-name');
     const desc = document.getElementById('track-preview-desc');
-    if (nm) nm.textContent = t.name;
+    if (nm) nm.textContent = t.displayName || t.name;
     if (desc) desc.textContent = t.desc;
 
     const stats = computeTrackStats(t);
